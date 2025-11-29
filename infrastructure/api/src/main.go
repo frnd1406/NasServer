@@ -128,6 +128,7 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize backup service")
 	}
+	aiHTTPClient := &http.Client{Timeout: 8 * time.Second}
 
 	// Start backup scheduler in background
 	go func() {
@@ -232,6 +233,7 @@ func main() {
 		v1.GET("/system/alerts", handlers.SystemAlertsListHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts", handlers.SystemAlertCreateHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts/:id/resolve", handlers.SystemAlertResolveHandler(systemAlertsRepo, logger))
+		v1.GET("/search", handlers.SearchHandler(db, cfg.AIServiceURL, aiHTTPClient, logger))
 	}
 
 	settingsV1 := v1.Group("/system")

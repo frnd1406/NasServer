@@ -97,6 +97,9 @@ func LoadConfigWithViper() (*Config, error) {
 		BackupSchedule:       v.GetString("backup_schedule"),
 		BackupRetentionCount: v.GetInt("backup_retention_count"),
 		BackupStoragePath:    v.GetString("backup_storage_path"),
+
+		// AI/semantic search
+		AIServiceURL: v.GetString("ai_service_url"),
 	}
 
 	// Build DatabaseURL if not provided
@@ -157,6 +160,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("backup_schedule", "0 3 * * *")
 	v.SetDefault("backup_retention_count", 7)
 	v.SetDefault("backup_storage_path", "/mnt/backups")
+
+	// AI agent default
+	v.SetDefault("ai_service_url", "http://ai-knowledge-agent:5000")
 }
 
 // bindEnvVars explicitly binds environment variables to config keys
@@ -203,6 +209,9 @@ func bindEnvVars(v *viper.Viper) {
 	_ = v.BindEnv("backup_schedule", "BACKUP_SCHEDULE")
 	_ = v.BindEnv("backup_retention_count", "BACKUP_RETENTION_COUNT")
 	_ = v.BindEnv("backup_storage_path", "BACKUP_STORAGE_PATH")
+
+	// AI agent
+	_ = v.BindEnv("ai_service_url", "AI_SERVICE_URL")
 }
 
 // validateRequired validates that all required configuration fields are present
@@ -255,6 +264,10 @@ func validateConfig(cfg *Config) error {
 	}
 	if strings.TrimSpace(cfg.BackupStoragePath) == "" {
 		return fmt.Errorf("CRITICAL: Backup storage path is required")
+	}
+
+	if strings.TrimSpace(cfg.AIServiceURL) == "" {
+		return fmt.Errorf("CRITICAL: AI_SERVICE_URL is required for semantic search")
 	}
 
 	// Validate environment
@@ -332,6 +345,7 @@ func PrintConfig(cfg *Config) {
 	fmt.Printf("Database: %s\n", maskConnectionString(cfg.DatabaseURL))
 	fmt.Printf("Redis: %s\n", cfg.RedisURL)
 	fmt.Printf("Frontend URL: %s\n", cfg.FrontendURL)
+	fmt.Printf("AI Service URL: %s\n", cfg.AIServiceURL)
 	fmt.Println("=====================")
 }
 

@@ -52,6 +52,9 @@ type Config struct {
 	// Monitoring (agent ingestion)
 	MonitoringToken string
 
+	// AI/semantic search
+	AIServiceURL string
+
 	// Backup configuration
 	BackupSchedule       string
 	BackupRetentionCount int
@@ -76,6 +79,7 @@ func LoadConfigFromEnv() (*Config, error) {
 		BackupSchedule:       getEnv("BACKUP_SCHEDULE", "0 3 * * *"),
 		BackupRetentionCount: getEnvInt("BACKUP_RETENTION_COUNT", 7),
 		BackupStoragePath:    getEnv("BACKUP_STORAGE_PATH", "/mnt/backups"),
+		AIServiceURL:         getEnv("AI_SERVICE_URL", "http://ai-knowledge-agent:5000"),
 	}
 
 	// CORS Origins (Whitelist)

@@ -15,9 +15,11 @@ INFRA_DIR="$ROOT_DIR/infrastructure"
 API_DIR="$INFRA_DIR/api"
 DOC_OUTPUT="$ROOT_DIR/API_ENDPOINTS.md"
 COMPOSE_FILE="$INFRA_DIR/docker-compose.prod.yml"
+DEV_COMPOSE_FILE="$INFRA_DIR/docker-compose.dev.yml"
 ENV_FILE="$INFRA_DIR/.env.prod"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$INFRA_DIR")}"
 DC_CMD="docker compose -f \"$COMPOSE_FILE\""
+DC_CMD_DEV="docker compose -f \"$DEV_COMPOSE_FILE\""
 NETWORK_NAME="${PROJECT_NAME}_nas-network"
 
 API_URL_DEFAULT="https://felix-freund.com"
@@ -403,6 +405,24 @@ docker_clean_rebuild() {
   ok "Rebuild abgeschlossen."
 }
 
+# --- Build & Start API (dev compose) ----------------------------------------
+build_and_start_api_dev() {
+  info "Baue API Image im dev-Modus (Tag: nas-api:lastest)"
+  (cd "$API_DIR" && docker build -t nas-api:lastest .)
+
+  if [ ! -f "$DEV_COMPOSE_FILE" ]; then
+    warn "Dev-Compose-Datei fehlt: $DEV_COMPOSE_FILE"
+    return
+  fi
+
+  info "Starte API Service via docker-compose.dev.yml"
+  eval $DC_CMD_DEV up -d api
+
+  info "Status:"
+  eval $DC_CMD_DEV ps api || true
+  ok "API wurde neu gebaut und gestartet."
+}
+
 # --- Smart waits for deployment ---------------------------------------------
 smart_wait_pg() {
   local retries=30 delay=2
@@ -447,6 +467,221 @@ apply_db_seed_if_reset() {
   ok "DB-Init abgeschlossen."
 }
 
+# --- AI Knowledge Agent Functions --------------------------------------------
+ai_db_clear() {
+  info "Lösche AI Knowledge Embeddings Tabelle..."
+
+  read -r -p "Wirklich alle AI Embeddings löschen? (y/N): " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    warn "Abgebrochen."
+    return 0
+  fi
+
+  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "DROP TABLE IF EXISTS file_embeddings CASCADE;" || fail "DB Drop fehlgeschlagen"
+  ok "file_embeddings Tabelle gelöscht."
+
+  info "Erstelle neue leere Tabelle..."
+  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "
+    CREATE TABLE IF NOT EXISTS file_embeddings (
+      id SERIAL PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      embedding vector(384),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(file_id)
+    );" || fail "Tabellen-Erstellung fehlgeschlagen"
+
+  ok "Neue leere file_embeddings Tabelle erstellt."
+}
+
+ai_agent_restart() {
+  info "Starte AI Knowledge Agent neu..."
+
+  eval $DC_CMD restart ai-knowledge-agent || fail "Neustart fehlgeschlagen"
+
+  info "Warte auf Model-Loading (20s)..."
+  sleep 20
+
+  info "Prüfe AI Agent Logs:"
+  eval $DC_CMD logs --tail 15 ai-knowledge-agent
+
+  ok "AI Knowledge Agent neu gestartet."
+}
+
+ai_agent_rebuild() {
+  info "Rebuild AI Knowledge Agent (mit neuem Code)..."
+
+  info "[1/3] Stoppe Container..."
+  eval $DC_CMD stop ai-knowledge-agent || true
+  eval $DC_CMD rm -f ai-knowledge-agent || true
+
+  info "[2/3] Rebuild Image..."
+  (cd "$INFRA_DIR" && eval $DC_CMD build --no-cache ai-knowledge-agent)
+
+  info "[3/3] Starte Container..."
+  eval $DC_CMD up -d ai-knowledge-agent
+
+  info "Warte auf Model-Loading (25s)..."
+  sleep 25
+
+  info "Status & Logs:"
+  eval $DC_CMD ps ai-knowledge-agent
+  eval $DC_CMD logs --tail 15 ai-knowledge-agent
+
+  ok "AI Agent neu gebaut und gestartet."
+}
+
+ai_full_reset() {
+  echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║${NC}   🧠 AI Knowledge Agent - Full Reset            ${BLUE}║${NC}"
+  echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  warn "Dies wird durchführen:"
+  echo "  1) Alle AI Embeddings aus Datenbank löschen"
+  echo "  2) AI Agent Container neu starten"
+  echo "  3) Logs zur Kontrolle ausgeben"
+  echo ""
+
+  read -r -p "Fortfahren? (y/N): " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    warn "Abgebrochen."
+    return 0
+  fi
+
+  ai_db_clear
+  echo ""
+  ai_agent_restart
+
+  ok "Full AI Reset abgeschlossen."
+}
+
+ai_show_embeddings() {
+  info "Zeige gespeicherte AI Embeddings..."
+
+  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "
+    SELECT
+      file_id,
+      mime_type,
+      LENGTH(content) as content_length,
+      384 as embedding_dim,
+      created_at
+    FROM file_embeddings
+    ORDER BY created_at DESC
+    LIMIT 20;" || warn "Tabelle existiert möglicherweise nicht"
+}
+
+ai_test_endpoint() {
+  info "Teste AI Agent /process Endpoint..."
+
+  read -r -p "Dateiname in /mnt/data/ [test.txt]: " filename
+  filename=${filename:-test.txt}
+
+  local payload
+  payload=$(printf '{"file_path":"/mnt/data/%s","file_id":"%s","mime_type":"text/plain"}' "$filename" "$filename")
+
+  info "Sende Request an AI Agent..."
+  eval $DC_CMD exec api sh -c "'curl -X POST http://ai-knowledge-agent:5000/process -H \"Content-Type: application/json\" -d '\''$payload'\'' 2>&1'" || fail "Request fehlgeschlagen"
+
+  echo ""
+  info "Prüfe AI Agent Logs:"
+  eval $DC_CMD logs --tail 10 ai-knowledge-agent
+}
+
+ai_test_embed_query() {
+  info "Teste AI Agent /embed_query Endpoint..."
+
+  read -r -p "Suchtext: " searchtext
+  if [ -z "$searchtext" ]; then
+    warn "Kein Suchtext eingegeben. Abbruch."
+    return 0
+  fi
+
+  local payload
+  payload=$(printf '{"text":"%s"}' "$searchtext")
+
+  info "Sende Request an AI Agent..."
+  local response
+  response=$(eval $DC_CMD exec api sh -c "'curl -sS -X POST http://ai-knowledge-agent:5000/embed_query -H \"Content-Type: application/json\" -d '\''$payload'\'' 2>&1'")
+
+  echo -e "${GREEN}Response:${NC}"
+  echo "$response" | jq '.' 2>/dev/null || echo "$response"
+}
+
+ai_test_semantic_search() {
+  info "Teste Semantische Suche..."
+
+  read -r -p "Suchanfrage: " query
+  if [ -z "$query" ]; then
+    warn "Keine Suchanfrage eingegeben. Abbruch."
+    return 0
+  fi
+
+  info "Sende Suchanfrage an API..."
+
+  # URL-encode the query
+  local encoded_query
+  encoded_query=$(printf '%s' "$query" | jq -sRr @uri)
+
+  local response
+  response=$(eval $DC_CMD exec api sh -c "'curl -sS \"http://localhost:8080/api/v1/search?q=$encoded_query\" 2>&1'")
+
+  echo -e "${GREEN}Suchergebnisse:${NC}"
+  echo "$response" | jq '.' 2>/dev/null || echo "$response"
+
+  echo ""
+  info "Top 3 Resultate:"
+  echo "$response" | jq -r '.results[:3] | .[] | "\nDatei: \(.file_path)\nÄhnlichkeit: \(.similarity)\nInhalt: \(.content[:200])..."' 2>/dev/null || true
+}
+
+ai_rebuild_and_restart_all() {
+  echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
+  echo -e "${BLUE}║${NC}   🚀 AI Agent + API Rebuild & Restart          ${BLUE}║${NC}"
+  echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
+  echo ""
+
+  warn "Dies wird durchführen:"
+  echo "  1) AI Agent neu bauen (mit /embed_query Endpoint)"
+  echo "  2) API neu bauen (mit Semantic Search)"
+  echo "  3) Beide Container neu starten"
+  echo ""
+
+  read -r -p "Fortfahren? (y/N): " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    warn "Abgebrochen."
+    return 0
+  fi
+
+  info "[1/4] Stoppe Container..."
+  eval $DC_CMD stop ai-knowledge-agent api || true
+
+  info "[2/4] Rebuild AI Agent..."
+  (cd "$INFRA_DIR" && eval $DC_CMD build --no-cache ai-knowledge-agent)
+
+  info "[3/4] Rebuild API..."
+  (cd "$API_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o api-new ./src/main.go)
+  docker cp "$API_DIR/api-new" nas-api:/app/api
+
+  info "[4/4] Starte Container..."
+  eval $DC_CMD up -d ai-knowledge-agent api
+
+  info "Warte auf Services (30s)..."
+  sleep 30
+
+  info "Status & Logs:"
+  eval $DC_CMD ps ai-knowledge-agent api
+  echo ""
+  info "AI Agent Logs:"
+  eval $DC_CMD logs --tail 10 ai-knowledge-agent
+  echo ""
+  info "API Logs:"
+  eval $DC_CMD logs --tail 10 api
+
+  ok "Rebuild & Restart abgeschlossen."
+}
+
 # --- Deploy Prod -------------------------------------------------------------
 deploy_prod() {
   [ -f "$ENV_FILE" ] || fail ".env.prod fehlt ($ENV_FILE)"
@@ -487,6 +722,8 @@ main_menu() {
     print_header
     printf "%s\n" \
       "${YELLOW}┌──────────────────────────────────────────────┐${NC}" \
+      "${YELLOW}│${NC}   ${CYAN}API & System${NC}                              ${YELLOW}│${NC}" \
+      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
       "${YELLOW}│${NC} 1) 🔍 API Health Check (single)             ${YELLOW}│${NC}" \
       "${YELLOW}│${NC} 2) 📡 API Monitoring Loop                 ${YELLOW}│${NC}" \
       "${YELLOW}│${NC} 3) 🧪 Endpoint Tests                      ${YELLOW}│${NC}" \
@@ -496,6 +733,20 @@ main_menu() {
       "${YELLOW}│${NC} 7) ✅ API Health Check (erweitert)       ${YELLOW}│${NC}" \
       "${YELLOW}│${NC} 8) 🐳 Docker Clean Rebuild               ${YELLOW}│${NC}" \
       "${YELLOW}│${NC} 9) 🚀 Deploy Prod                         ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}10) 🔨 API neu bauen & starten (dev)         ${YELLOW}│${NC}" \
+      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
+      "${YELLOW}│${NC}   ${CYAN}AI Knowledge Agent${NC}                        ${YELLOW}│${NC}" \
+      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
+      "${YELLOW}│${NC}11) 🗑️  AI DB Clear (Embeddings löschen)      ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}12) 🔄 AI Agent Restart                    ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}13) 🔨 AI Agent Rebuild (neu bauen)       ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}14) 🧠 AI Full Reset (DB + Restart)       ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}15) 📊 AI Embeddings anzeigen             ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}16) 🧪 AI /process Endpoint Test          ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}17) 🔍 AI /embed_query Test               ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}18) 🎯 Semantic Search Test               ${YELLOW}│${NC}" \
+      "${YELLOW}│${NC}19) 🚀 AI+API Full Rebuild                ${YELLOW}│${NC}" \
+      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
       "${YELLOW}│${NC} L) 🔐 Login & Tokens setzen               ${YELLOW}│${NC}" \
       "${YELLOW}│${NC} 0) ❌ Beenden                             ${YELLOW}│${NC}" \
       "${YELLOW}└──────────────────────────────────────────────┘${NC}"
@@ -510,6 +761,16 @@ main_menu() {
       7) api_health_check_full; read -r -p "Weiter mit Enter..." _ ;;
       8) docker_clean_rebuild; read -r -p "Weiter mit Enter..." _ ;;
       9) deploy_prod; read -r -p "Weiter mit Enter..." _ ;;
+      10) build_and_start_api_dev; read -r -p "Weiter mit Enter..." _ ;;
+      11) ai_db_clear; read -r -p "Weiter mit Enter..." _ ;;
+      12) ai_agent_restart; read -r -p "Weiter mit Enter..." _ ;;
+      13) ai_agent_rebuild; read -r -p "Weiter mit Enter..." _ ;;
+      14) ai_full_reset; read -r -p "Weiter mit Enter..." _ ;;
+      15) ai_show_embeddings; read -r -p "Weiter mit Enter..." _ ;;
+      16) ai_test_endpoint; read -r -p "Weiter mit Enter..." _ ;;
+      17) ai_test_embed_query; read -r -p "Weiter mit Enter..." _ ;;
+      18) ai_test_semantic_search; read -r -p "Weiter mit Enter..." _ ;;
+      19) ai_rebuild_and_restart_all; read -r -p "Weiter mit Enter..." _ ;;
       [Ll]) login_and_set_tokens; read -r -p "Weiter mit Enter..." _ ;;
       0) exit 0 ;;
       *) warn "Ungültige Auswahl"; sleep 1 ;;

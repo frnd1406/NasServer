@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import psycopg2
 from psycopg2 import OperationalError
 from sentence_transformers import SentenceTransformer
@@ -56,6 +56,137 @@ def health():
             "db_ok": db_ok,
         }
     ), 200
+
+
+@app.route("/process", methods=["POST"])
+def process_file():
+    """
+    Process an uploaded file and generate embeddings.
+
+    Expected JSON payload:
+    {
+        "file_path": "/mnt/data/document.txt",
+        "file_id": "document.txt",
+        "mime_type": "text/plain"
+    }
+    """
+    if not model_loaded:
+        logger.error("Model not loaded yet")
+        return jsonify({"error": "Model not loaded"}), 503
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        file_path = data.get("file_path")
+        file_id = data.get("file_id")
+        mime_type = data.get("mime_type")
+
+        if not all([file_path, file_id, mime_type]):
+            return jsonify({"error": "Missing required fields: file_path, file_id, mime_type"}), 400
+
+        logger.info("Processing file: %s (ID: %s, MIME: %s)", file_path, file_id, mime_type)
+
+        # Read file content
+        if not os.path.exists(file_path):
+            logger.error("File not found: %s", file_path)
+            return jsonify({"error": f"File not found: {file_path}"}), 404
+
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        if not content.strip():
+            logger.warning("File is empty: %s", file_path)
+            return jsonify({"status": "skipped", "reason": "empty file"}), 200
+
+        # Generate embeddings
+        logger.info("Generating embeddings for %s (%d chars)", file_id, len(content))
+        embedding = model.encode(content)
+
+        # Store in database
+        dsn = {
+            "host": os.getenv("PGHOST", "postgres"),
+            "port": os.getenv("PGPORT", "5432"),
+            "dbname": os.getenv("PGDATABASE", "nas_db"),
+            "user": os.getenv("PGUSER", "nas_user"),
+            "password": os.getenv("PGPASSWORD", ""),
+        }
+
+        conn = psycopg2.connect(**dsn)
+        try:
+            with conn.cursor() as cur:
+                # Create table if it doesn't exist
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS file_embeddings (
+                        id SERIAL PRIMARY KEY,
+                        file_id TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        mime_type TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        embedding vector(384),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(file_id)
+                    )
+                """)
+
+                # Insert or update embedding
+                cur.execute("""
+                    INSERT INTO file_embeddings (file_id, file_path, mime_type, content, embedding)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (file_id)
+                    DO UPDATE SET
+                        file_path = EXCLUDED.file_path,
+                        mime_type = EXCLUDED.mime_type,
+                        content = EXCLUDED.content,
+                        embedding = EXCLUDED.embedding,
+                        created_at = CURRENT_TIMESTAMP
+                """, (file_id, file_path, mime_type, content, embedding.tolist()))
+
+                conn.commit()
+                logger.info("Successfully stored embeddings for %s", file_id)
+        finally:
+            conn.close()
+
+        return jsonify({
+            "status": "success",
+            "file_id": file_id,
+            "content_length": len(content),
+            "embedding_dim": len(embedding)
+        }), 200
+
+    except Exception as e:
+        logger.error("Error processing file: %s", str(e), exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/embed_query", methods=["POST"])
+def embed_query():
+    """
+    Generate an embedding for an arbitrary query text.
+
+    Expected JSON payload:
+    {
+        "text": "Meine Suchanfrage"
+    }
+    """
+    if not model_loaded:
+        logger.error("Model not loaded yet")
+        return jsonify({"error": "Model not loaded"}), 503
+
+    try:
+        data = request.get_json(silent=True) or {}
+        text = data.get("text", "")
+        if not text or not str(text).strip():
+            return jsonify({"error": "Missing or empty 'text'"}), 400
+
+        logger.info("Generating embedding for query (%d chars)", len(text))
+        embedding = model.encode(text)
+
+        return jsonify({"embedding": embedding.tolist()}), 200
+    except Exception as e:
+        logger.error("Error generating query embedding: %s", str(e), exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 def main():
