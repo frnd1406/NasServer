@@ -280,46 +280,68 @@ func (s *StorageService) ValidateFileSize(file multipart.File, fileHeader *multi
 	return nil
 }
 
+// SaveResult contains metadata about the saved file
+type SaveResult struct {
+	Path     string
+	MimeType string
+	FileID   string
+}
+
 // Save stores the provided file into the given relative directory.
-func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multipart.FileHeader) error {
+func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multipart.FileHeader) (*SaveResult, error) {
 	filename := fileHeader.Filename
 
 	if filename == "" {
-		return fmt.Errorf("filename is required")
+		return nil, fmt.Errorf("filename is required")
 	}
 
 	// SECURITY: Validate file size FIRST (before reading content)
 	if err := s.ValidateFileSize(file, fileHeader); err != nil {
-		return err
+		return nil, err
 	}
+
+	// Read first 512 bytes for MIME detection (before validation)
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	// Reset file pointer
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to reset file pointer: %w", err)
+	}
+
+	// Detect MIME type
+	detectedMimeType := http.DetectContentType(buffer[:n])
 
 	// SECURITY: Validate file type (magic numbers + extension check)
 	if err := s.ValidateFileType(file, filename); err != nil {
-		return err
+		return nil, err
 	}
 
 	targetDir, err := s.sanitizePath(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("create target dir: %w", err)
+		return nil, fmt.Errorf("create target dir: %w", err)
 	}
 
 	destPath, err := s.sanitizePath(filepath.Join(dir, filepath.Base(filename)))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	dest, err := os.Create(destPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer dest.Close()
 
 	if _, err := io.Copy(dest, file); err != nil {
-		return fmt.Errorf("write file: %w", err)
+		return nil, fmt.Errorf("write file: %w", err)
 	}
 
 	s.logger.WithFields(logrus.Fields{
@@ -327,7 +349,14 @@ func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multi
 		"path":     destPath,
 	}).Info("File uploaded successfully")
 
-	return nil
+	// Create result with metadata
+	result := &SaveResult{
+		Path:     destPath,
+		MimeType: detectedMimeType,
+		FileID:   filepath.Base(filename), // Use filename as ID
+	}
+
+	return result, nil
 }
 
 // Open returns a file handle and metadata for download.

@@ -1,16 +1,102 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/services"
 	"github.com/sirupsen/logrus"
 )
+
+// AI-indexable MIME types (text-based files only)
+var aiIndexableMimeTypes = map[string]bool{
+	"text/plain":       true,
+	"application/pdf":  true,
+	"text/markdown":    true,
+	"text/csv":         true,
+}
+
+// AIAgentPayload represents the data sent to the AI knowledge agent
+type AIAgentPayload struct {
+	FilePath string `json:"file_path"`
+	FileID   string `json:"file_id"`
+	MimeType string `json:"mime_type"`
+}
+
+// notifyAIAgent sends a fire-and-forget notification to the AI knowledge agent
+func notifyAIAgent(filePath, fileID, mimeType string, logger *logrus.Logger) {
+	// Run asynchronously to avoid blocking the upload response
+	go func() {
+		// Check if file is eligible for AI indexing
+		if !aiIndexableMimeTypes[mimeType] {
+			logger.WithFields(logrus.Fields{
+				"file_path": filePath,
+				"mime_type": mimeType,
+			}).Info("Skipping AI indexing for non-text file")
+			return
+		}
+
+		payload := AIAgentPayload{
+			FilePath: filePath,
+			FileID:   fileID,
+			MimeType: mimeType,
+		}
+
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to marshal AI agent payload")
+			return
+		}
+
+		// AI agent endpoint (internal Docker DNS)
+		aiAgentURL := "http://ai-knowledge-agent:5000/process"
+
+		// Create HTTP request with timeout
+		req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			logger.WithError(err).Warn("Failed to create AI agent request")
+			return
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		// Use a client with timeout to prevent hanging
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"url":       aiAgentURL,
+				"file_path": filePath,
+				"error":     err.Error(),
+			}).Warn("Failed to trigger AI agent")
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			logger.WithFields(logrus.Fields{
+				"file_path": filePath,
+				"file_id":   fileID,
+				"mime_type": mimeType,
+			}).Info("Triggered AI agent successfully")
+		} else {
+			logger.WithFields(logrus.Fields{
+				"status_code": resp.StatusCode,
+				"file_path":   filePath,
+			}).Warn("AI agent returned non-200 status")
+		}
+	}()
+}
 
 func handleStorageError(c *gin.Context, err error, logger *logrus.Logger, requestID string) {
 	status := http.StatusBadRequest
@@ -90,10 +176,16 @@ func StorageUploadHandler(storage *services.StorageService, logger *logrus.Logge
 		}
 		defer src.Close()
 
-		if err := storage.Save(path, src, fileHeader); err != nil {
+		// Save file and get metadata
+		result, err := storage.Save(path, src, fileHeader)
+		if err != nil {
 			handleStorageError(c, err, logger, requestID)
 			return
 		}
+
+		// Trigger AI agent notification (fire & forget)
+		// This happens AFTER successful save to disk
+		notifyAIAgent(result.Path, result.FileID, result.MimeType, logger)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
