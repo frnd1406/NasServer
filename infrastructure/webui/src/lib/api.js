@@ -300,3 +300,21 @@ export async function apiRequest(path, options = {}) {
   error.status = firstAttempt.res.status;
   throw error;
 }
+
+/**
+ * Search for documents using semantic search
+ * @param {string} query - Search query
+ * @returns {Promise<{query: string, results: Array}>}
+ */
+export async function searchFiles(query) {
+  if (!query || !query.trim()) {
+    throw new Error("Search query is required");
+  }
+
+  const encodedQuery = encodeURIComponent(query.trim());
+  const response = await apiRequest(`/api/v1/search?q=${encodedQuery}`, {
+    method: "GET",
+  });
+
+  return response;
+}

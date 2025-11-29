@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Backup from "./pages/Backup";
 import Dashboard from "./pages/Dashboard";
+import Search from "./pages/Search";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="files" element={<Files />} />
+          <Route path="search" element={<Search />} />
           <Route path="metrics" element={<Metrics />} />
           <Route path="backups" element={<Backup />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

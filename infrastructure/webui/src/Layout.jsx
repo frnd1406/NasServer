@@ -67,6 +67,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
 
   const navLinks = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/search", label: "Semantic Search", icon: Search },
     { to: "/metrics", label: "Metrics", icon: Activity },
     { to: "/files", label: "Files & Storage", icon: FolderOpen },
     { to: "/backups", label: "Backups", icon: Database },
@@ -180,6 +181,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
             <div className="hidden lg:block">
               <h2 className="text-2xl font-semibold text-white">
                 {location.pathname === '/dashboard' && 'Dashboard Overview'}
+                {location.pathname === '/search' && 'Semantic Search'}
                 {location.pathname === '/metrics' && 'System Metrics'}
                 {location.pathname === '/files' && 'Files & Storage'}
                 {location.pathname === '/backups' && 'Backups'}
