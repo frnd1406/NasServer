@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 
 function Success() {
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
+  const { isAuthenticated, logout } = useAuth()
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken')
-
-    if (!token) {
-      // No token, redirect to login
+    // SECURITY: Check authentication via in-memory context (not localStorage)
+    if (!isAuthenticated) {
       navigate('/login')
       return
     }
@@ -17,12 +17,11 @@ function Success() {
     // Fetch user info (optional - you can skip this if API doesn't provide user endpoint)
     // For now, just show success message
     setUser({ email: 'user@example.com' })
-  }, [navigate])
+  }, [navigate, isAuthenticated])
 
   const handleLogout = () => {
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
-    localStorage.removeItem('csrfToken')
+    // SECURITY: Logout via AuthContext (clears in-memory token + legacy localStorage)
+    logout()
     navigate('/login')
   }
 

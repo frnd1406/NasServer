@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { apiRequest } from '../lib/api'
 
 function Login() {
@@ -8,6 +9,7 @@ function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { login } = useAuth()
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -20,14 +22,20 @@ function Login() {
         body: JSON.stringify({ email, password }),
       })
 
-      // Store tokens in localStorage
+      // SECURITY: Store accessToken in-memory via AuthContext (not localStorage)
       if (data.access_token) {
-        localStorage.setItem('accessToken', data.access_token)
+        login(data.access_token)
+      }
+
+      // Keep refresh_token in localStorage temporarily (will move to HttpOnly cookie)
+      if (data.refresh_token) {
         localStorage.setItem('refreshToken', data.refresh_token)
+      }
+      if (data.csrf_token) {
         localStorage.setItem('csrfToken', data.csrf_token)
       }
 
-      // Login successful, redirect to success page
+      // Login successful, redirect to dashboard
       navigate('/dashboard')
     } catch (err) {
       setError(err.message)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { apiRequest } from '../lib/api'
 
 const HEALTH_POLL_MS = 5000
@@ -34,10 +35,11 @@ function Dashboard() {
   const [samples, setSamples] = useState([])
   const [monitoringError, setMonitoringError] = useState('')
   const navigate = useNavigate()
+  const { isAuthenticated, logout } = useAuth()
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken')
-    if (!token) {
+    // SECURITY: Check authentication via in-memory context (not localStorage)
+    if (!isAuthenticated) {
       navigate('/login')
       return
     }
@@ -101,9 +103,8 @@ function Dashboard() {
         </div>
         <button
           onClick={() => {
-            localStorage.removeItem('accessToken')
-            localStorage.removeItem('refreshToken')
-            localStorage.removeItem('csrfToken')
+            // SECURITY: Logout via AuthContext (clears in-memory token + legacy localStorage)
+            logout()
             navigate('/login')
           }}
           style={{ padding: '8px 16px', background: '#1f2937', color: '#fff', border: 'none', cursor: 'pointer' }}

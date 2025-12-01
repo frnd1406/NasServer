@@ -1,5 +1,13 @@
 const envBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').trim()
 
+// SECURITY: AuthContext reference for in-memory token access
+// Set by setAuthContext() when app initializes
+let authContextRef = null
+
+export function setAuthContext(authContext) {
+  authContextRef = authContext
+}
+
 function deriveDefaultBaseUrl() {
   // When no env is provided, fall back to the current host but the API port (8080 for dev).
   if (typeof window === 'undefined') {
@@ -116,19 +124,43 @@ function showLogoutOverlay(seconds) {
   if (!logoutOverlay) {
     logoutOverlay = document.createElement('div')
     logoutOverlay.className = 'session-warning-overlay'
-    logoutOverlay.innerHTML = `
-      <div class="session-warning-card">
-        <div class="session-warning-pill">Warnung · Session läuft ab</div>
-        <div class="session-warning-title">Gleich wirst du abgemeldet</div>
-        <p class="session-warning-body">
-          Wir konnten deinen Token nicht erneuern. Du wirst in
-          <span class="session-warning-timer" data-session-timer></span>
-          abgemeldet.
-        </p>
-        <p class="session-warning-subtle">Bitte melde dich erneut an, um weiterzuarbeiten.</p>
-      </div>
-    `
+
+    // CRITICAL FIX: Use DOM methods instead of innerHTML to prevent XSS (BUG-JS-001)
+    const card = document.createElement('div')
+    card.className = 'session-warning-card'
+
+    const pill = document.createElement('div')
+    pill.className = 'session-warning-pill'
+    pill.textContent = 'Warnung · Session läuft ab'
+
+    const title = document.createElement('div')
+    title.className = 'session-warning-title'
+    title.textContent = 'Gleich wirst du abgemeldet'
+
+    const body = document.createElement('p')
+    body.className = 'session-warning-body'
+    body.textContent = 'Wir konnten deinen Token nicht erneuern. Du wirst in '
+
+    const timer = document.createElement('span')
+    timer.className = 'session-warning-timer'
+    timer.setAttribute('data-session-timer', '')
+    timer.textContent = `${seconds}s`
+
+    body.appendChild(timer)
+    body.appendChild(document.createTextNode(' abgemeldet.'))
+
+    const subtle = document.createElement('p')
+    subtle.className = 'session-warning-subtle'
+    subtle.textContent = 'Bitte melde dich erneut an, um weiterzuarbeiten.'
+
+    card.appendChild(pill)
+    card.appendChild(title)
+    card.appendChild(body)
+    card.appendChild(subtle)
+
+    logoutOverlay.appendChild(card)
     document.body.appendChild(logoutOverlay)
+
     // Trigger fade-in
     requestAnimationFrame(() => {
       logoutOverlay.classList.add('is-visible')
@@ -156,6 +188,12 @@ function showLogoutOverlay(seconds) {
 }
 
 function clearAuth() {
+  // Clear in-memory token via AuthContext
+  if (authContextRef?.logout) {
+    authContextRef.logout()
+  }
+
+  // Legacy cleanup: Remove any old tokens from localStorage
   localStorage.removeItem('accessToken')
   localStorage.removeItem('refreshToken')
   localStorage.removeItem('csrfToken')
@@ -173,6 +211,8 @@ async function refreshAccessToken() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken }),
+      // CRITICAL FIX: Send cookies with refresh request (BUG-JS-002)
+      credentials: 'include',
     })
 
     if (!res.ok) {
@@ -186,7 +226,12 @@ async function refreshAccessToken() {
       return null
     }
 
-    localStorage.setItem('accessToken', newAccessToken)
+    // SECURITY: Store accessToken in-memory via AuthContext (not localStorage)
+    if (authContextRef?.login) {
+      authContextRef.login(newAccessToken)
+    }
+
+    // Keep refresh_token in localStorage temporarily (will move to HttpOnly cookie)
     if (data?.refresh_token) {
       localStorage.setItem('refreshToken', data.refresh_token)
     }
@@ -239,12 +284,15 @@ function extractErrorMessage(res, data) {
 }
 
 async function performRequest(path, options, tokenOverride) {
-  const accessToken = tokenOverride || localStorage.getItem('accessToken')
+  // SECURITY: Get accessToken from in-memory AuthContext (not localStorage)
+  const accessToken = tokenOverride || authContextRef?.accessToken || null
   let res
   try {
     res = await fetch(buildUrl(path), {
       ...options,
       headers: buildHeaders(accessToken, options.headers),
+      // CRITICAL FIX: Send cookies with every request (BUG-JS-002)
+      credentials: 'include',
     })
   } catch (err) {
     throw new Error(`Cannot reach API at ${API_BASE_URL} (${err.message})`)

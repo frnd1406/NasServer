@@ -5,6 +5,7 @@ import time
 from flask import Flask, jsonify, request
 import psycopg2
 from psycopg2 import OperationalError
+from pgvector.psycopg2 import register_vector
 from sentence_transformers import SentenceTransformer
 
 
@@ -49,6 +50,18 @@ def db_connect_with_retry(retries=10, delay=2.0):
 @app.route("/health", methods=["GET"])
 def health():
     db_ok = db_connect_with_retry(retries=1, delay=0)  # quick check on health requests
+
+    # Return 503 if model is not ready (crash prevention)
+    if not model_loaded or model is None:
+        return jsonify(
+            {
+                "status": "loading",
+                "model_loaded": False,
+                "db_ok": db_ok,
+                "message": "Model is still loading, service not ready"
+            }
+        ), 503
+
     return jsonify(
         {
             "status": "ok" if (model_loaded and db_ok) else "degraded",
@@ -70,10 +83,12 @@ def process_file():
         "mime_type": "text/plain"
     }
     """
-    if not model_loaded:
-        logger.error("Model not loaded yet")
+    # Null-pointer prevention: Check both model_loaded AND model is not None
+    if not model_loaded or model is None:
+        logger.error("Model not loaded yet or is None")
         return jsonify({"error": "Model not loaded"}), 503
 
+    conn = None  # Initialize for try-finally safety
     try:
         data = request.get_json()
         if not data:
@@ -100,11 +115,11 @@ def process_file():
             logger.warning("File is empty: %s", file_path)
             return jsonify({"status": "skipped", "reason": "empty file"}), 200
 
-        # Generate embeddings
+        # Generate embeddings (BEFORE opening DB connection to avoid leak)
         logger.info("Generating embeddings for %s (%d chars)", file_id, len(content))
         embedding = model.encode(content)
 
-        # Store in database
+        # Store in database with proper resource management
         dsn = {
             "host": os.getenv("PGHOST", "postgres"),
             "port": os.getenv("PGPORT", "5432"),
@@ -113,7 +128,12 @@ def process_file():
             "password": os.getenv("PGPASSWORD", ""),
         }
 
+        # Open connection AFTER embedding generation to minimize leak window
         conn = psycopg2.connect(**dsn)
+
+        # CRITICAL FIX: Register pgvector type adapter
+        register_vector(conn)
+
         try:
             with conn.cursor() as cur:
                 # Create table if it doesn't exist
@@ -146,7 +166,10 @@ def process_file():
                 conn.commit()
                 logger.info("Successfully stored embeddings for %s", file_id)
         finally:
-            conn.close()
+            # CRITICAL: Always close connection even on error
+            if conn:
+                conn.close()
+                logger.debug("DB connection closed for %s", file_id)
 
         return jsonify({
             "status": "success",
@@ -157,6 +180,13 @@ def process_file():
 
     except Exception as e:
         logger.error("Error processing file: %s", str(e), exc_info=True)
+        # CRITICAL: Close connection in error path too
+        if conn:
+            try:
+                conn.close()
+                logger.debug("DB connection closed after error")
+            except:
+                pass
         return jsonify({"error": str(e)}), 500
 
 
@@ -170,8 +200,9 @@ def embed_query():
         "text": "Meine Suchanfrage"
     }
     """
-    if not model_loaded:
-        logger.error("Model not loaded yet")
+    # Null-pointer prevention: Check both model_loaded AND model is not None
+    if not model_loaded or model is None:
+        logger.error("Model not loaded yet or is None")
         return jsonify({"error": "Model not loaded"}), 503
 
     try:
