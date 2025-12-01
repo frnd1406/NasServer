@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 	"github.com/nas-ai/api/src/database"
 	"github.com/sirupsen/logrus"
 )
@@ -48,13 +48,13 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 			return
 		}
 
-		vectorParam := formatVectorLiteral(embedding)
+		// Use pq.Array for safe parameter binding - prevents SQL injection
 		rows, err := db.QueryContext(c.Request.Context(), `
-			SELECT file_path, content, 1 - (embedding <=> $1::vector) as similarity
+			SELECT file_path, content, 1 - (embedding <=> $1) as similarity
 			FROM file_embeddings
-			ORDER BY embedding <=> $1::vector
+			ORDER BY embedding <=> $1
 			LIMIT 10;
-		`, vectorParam)
+		`, pq.Array(embedding))
 		if err != nil {
 			logger.WithError(err).Error("Failed to run similarity search query")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database query failed"})
@@ -118,13 +118,4 @@ func fetchEmbedding(ctx context.Context, client *http.Client, url, query string)
 	}
 
 	return parsed.Embedding, nil
-}
-
-// formatVectorLiteral converts a float slice into a pgvector-compatible literal.
-func formatVectorLiteral(values []float64) string {
-	parts := make([]string, len(values))
-	for i, v := range values {
-		parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
-	}
-	return "[" + strings.Join(parts, ",") + "]"
 }
