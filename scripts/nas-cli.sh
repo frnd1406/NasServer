@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'echo -e "${RED}💥 Fatal: Command failed (line $LINENO). Abbruch.${NC}"; exit 1' ERR
 
 # Colors
 RED=$'\033[0;31m'
@@ -8,6 +9,51 @@ YELLOW=$'\033[1;33m'
 BLUE=$'\033[0;34m'
 CYAN=$'\033[0;36m'
 NC=$'\033[0m'
+
+show_hype_loader() {
+  tput civis
+  echo -e "${GREEN}"
+  cat << "EOF"
+  _   _    _    ____      _    ___ 
+ | \ | |  / \  / ___|    / \  |_ _|
+ |  \| | / _ \ \___ \   / _ \  | | 
+ | |\  |/ ___ \ ___) | / ___ \ | | 
+ |_| \_/_/   \_\____/ /_/   \_\___|
+                                   
+EOF
+  echo -e "${NC}"
+
+  MSGS=(
+    "🚀 Initializing Neural Networks..."
+    "🔒 Encrypting Flux Capacitors..."
+    "📡 Scanning Local Subnet for Threats..."
+    "🧠 Waking up AI Agents..."
+    "⚙️  Compiling Dopamine Injectors..."
+    "💾 Optimizing Matrix Renderers..."
+    "⚡ Powering up Quantum Cores..."
+  )
+
+  echo -ne "${YELLOW}SYSTEM STARTUP: [${NC}"
+  for i in {1..50}; do
+    RANDOM_COLOR=$((RANDOM % 6 + 31))
+    echo -ne "\e[1;${RANDOM_COLOR}m#\e[0m"
+    if [ $((RANDOM % 10)) -gt 7 ]; then
+      sleep 0.1
+    else
+      sleep 0.02
+    fi
+  done
+  echo -e "${YELLOW}] ${GREEN}100% READY${NC}"
+
+  for msg in "${MSGS[@]}"; do
+    echo -e "${GREEN}✓ $msg${NC}"
+    sleep 0.15
+  done
+
+  echo -e "\n${BLUE}>> SYSTEM ONLINE. WELCOME BACK, COMMANDER.${NC}\n"
+  sleep 0.5
+  tput cnorm
+}
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -44,6 +90,23 @@ fail() { echo -e "${RED}❌ $*${NC}" >&2; exit 1; }
 info() { echo -e "${BLUE}ℹ️  $*${NC}"; }
 ok()   { echo -e "${GREEN}✅ $*${NC}"; }
 warn() { echo -e "${YELLOW}⚠️  $*${NC}"; }
+
+require_cmd() {
+  for cmd in "$@"; do
+    command -v "$cmd" >/dev/null 2>&1 || fail "Befehl fehlt: $cmd"
+  done
+}
+
+check_prereqs() {
+  require_cmd docker curl jq git
+
+  if ! docker info >/dev/null 2>&1; then
+    fail "Docker Daemon nicht erreichbar. Starte Docker und versuche es erneut."
+  fi
+
+  [ -f "$COMPOSE_FILE" ] || fail "Compose-Datei fehlt: $COMPOSE_FILE"
+  [ -f "$ENV_FILE" ] || fail ".env.prod fehlt: $ENV_FILE"
+}
 
 status_explain() {
   case "$1" in
@@ -716,68 +779,110 @@ deploy_prod() {
   echo -e "${YELLOW}Logs:${NC} $DC_CMD logs -f --no-log-prefix"
 }
 
-# --- Menu --------------------------------------------------------------------
+# --- Menu (Arrow-navigation) -------------------------------------------------
 main_menu() {
+  local sections=(
+    "=== API & SYSTEM ==="
+    "=== AI KNOWLEDGE ==="
+    "=== ACCESS ==="
+  )
+  local items=(
+    "🔍 API Health Check (single)"
+    "📡 API Monitoring Loop"
+    "🧪 Endpoint Tests"
+    "📚 API Docs generieren"
+    "💾 Git Savepoint (add/commit/push)"
+    "📜 Docker Logs (optional no-prefix)"
+    "✅ API Health Check (erweitert)"
+    "🐳 Docker Clean Rebuild"
+    "🚀 Deploy Prod"
+    "🔨 API neu bauen & starten (dev)"
+    "🗑️  AI DB Clear (Embeddings löschen)"
+    "🔄 AI Agent Restart"
+    "🔨 AI Agent Rebuild (neu bauen)"
+    "🧠 AI Full Reset (DB + Restart)"
+    "📊 AI Embeddings anzeigen"
+    "🧪 AI /process Endpoint Test"
+    "🔍 AI /embed_query Test"
+    "🎯 Semantic Search Test"
+    "🚀 AI+API Full Rebuild"
+    "🔐 Login & Tokens setzen"
+    "❌ Beenden"
+  )
+  # Abschnittsgrenzen (Index, wo Abschnitt startet)
+  local dividers=(0 10 19)
+
+  local selected=0 key
+
   while true; do
+    clear
     print_header
-    printf "%s\n" \
-      "${YELLOW}┌──────────────────────────────────────────────┐${NC}" \
-      "${YELLOW}│${NC}   ${CYAN}API & System${NC}                              ${YELLOW}│${NC}" \
-      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
-      "${YELLOW}│${NC} 1) 🔍 API Health Check (single)             ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 2) 📡 API Monitoring Loop                 ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 3) 🧪 Endpoint Tests                      ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 4) 📚 API Docs generieren                 ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 5) 💾 Git Savepoint (add/commit/push)    ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 6) 📜 Docker Logs (optional no-prefix)   ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 7) ✅ API Health Check (erweitert)       ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 8) 🐳 Docker Clean Rebuild               ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 9) 🚀 Deploy Prod                         ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}10) 🔨 API neu bauen & starten (dev)         ${YELLOW}│${NC}" \
-      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
-      "${YELLOW}│${NC}   ${CYAN}AI Knowledge Agent${NC}                        ${YELLOW}│${NC}" \
-      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
-      "${YELLOW}│${NC}11) 🗑️  AI DB Clear (Embeddings löschen)      ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}12) 🔄 AI Agent Restart                    ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}13) 🔨 AI Agent Rebuild (neu bauen)       ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}14) 🧠 AI Full Reset (DB + Restart)       ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}15) 📊 AI Embeddings anzeigen             ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}16) 🧪 AI /process Endpoint Test          ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}17) 🔍 AI /embed_query Test               ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}18) 🎯 Semantic Search Test               ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC}19) 🚀 AI+API Full Rebuild                ${YELLOW}│${NC}" \
-      "${YELLOW}├──────────────────────────────────────────────┤${NC}" \
-      "${YELLOW}│${NC} L) 🔐 Login & Tokens setzen               ${YELLOW}│${NC}" \
-      "${YELLOW}│${NC} 0) ❌ Beenden                             ${YELLOW}│${NC}" \
-      "${YELLOW}└──────────────────────────────────────────────┘${NC}"
-    read -r -p "Auswahl: " choice
-    case "$choice" in
-      1) health_single; read -r -p "Weiter mit Enter..." _ ;;
-      2) health_monitor ;;
-      3) test_endpoints; read -r -p "Weiter mit Enter..." _ ;;
-      4) generate_api_docs; read -r -p "Weiter mit Enter..." _ ;;
-      5) git_savepoint; read -r -p "Weiter mit Enter..." _ ;;
-      6) tail_logs ;;
-      7) api_health_check_full; read -r -p "Weiter mit Enter..." _ ;;
-      8) docker_clean_rebuild; read -r -p "Weiter mit Enter..." _ ;;
-      9) deploy_prod; read -r -p "Weiter mit Enter..." _ ;;
-      10) build_and_start_api_dev; read -r -p "Weiter mit Enter..." _ ;;
-      11) ai_db_clear; read -r -p "Weiter mit Enter..." _ ;;
-      12) ai_agent_restart; read -r -p "Weiter mit Enter..." _ ;;
-      13) ai_agent_rebuild; read -r -p "Weiter mit Enter..." _ ;;
-      14) ai_full_reset; read -r -p "Weiter mit Enter..." _ ;;
-      15) ai_show_embeddings; read -r -p "Weiter mit Enter..." _ ;;
-      16) ai_test_endpoint; read -r -p "Weiter mit Enter..." _ ;;
-      17) ai_test_embed_query; read -r -p "Weiter mit Enter..." _ ;;
-      18) ai_test_semantic_search; read -r -p "Weiter mit Enter..." _ ;;
-      19) ai_rebuild_and_restart_all; read -r -p "Weiter mit Enter..." _ ;;
-      [Ll]) login_and_set_tokens; read -r -p "Weiter mit Enter..." _ ;;
-      0) exit 0 ;;
-      *) warn "Ungültige Auswahl"; sleep 1 ;;
-    esac
+    printf "%s\n" "${YELLOW}Use ↑/↓ und Enter · q zum Beenden${NC}"
+
+    for i in "${!items[@]}"; do
+      # Abschnittstitel einblenden
+      for d in "${dividers[@]}"; do
+        if [ "$i" -eq "$d" ]; then
+          if [ "$d" -eq 0 ]; then
+            printf "${CYAN}${sections[0]}${NC}\n"
+          elif [ "$d" -eq 10 ]; then
+            printf "${CYAN}${sections[1]}${NC}\n"
+          elif [ "$d" -eq 19 ]; then
+            printf "${CYAN}${sections[2]}${NC}\n"
+          fi
+        fi
+      done
+
+      if [ "$i" -eq "$selected" ]; then
+        printf "${BLUE}>${NC} ${YELLOW}%s${NC}\n" "${items[$i]}"
+      else
+        printf "  %s\n" "${items[$i]}"
+      fi
+    done
+
+    read -rsn1 key
+    if [[ $key == $'\x1b' ]]; then
+      read -rsn2 key
+      case "$key" in
+        "[A") selected=$(( (selected - 1 + ${#items[@]}) % ${#items[@]} )) ;; # up
+        "[B") selected=$(( (selected + 1) % ${#items[@]} )) ;;                # down
+      esac
+      continue
+    fi
+
+    if [[ $key == "" || $key == $'\x0a' ]]; then
+      case "$selected" in
+        0) health_single; read -r -p "Weiter mit Enter..." _ ;;
+        1) health_monitor ;;
+        2) test_endpoints; read -r -p "Weiter mit Enter..." _ ;;
+        3) generate_api_docs; read -r -p "Weiter mit Enter..." _ ;;
+        4) git_savepoint; read -r -p "Weiter mit Enter..." _ ;;
+        5) tail_logs ;;
+        6) api_health_check_full; read -r -p "Weiter mit Enter..." _ ;;
+        7) docker_clean_rebuild; read -r -p "Weiter mit Enter..." _ ;;
+        8) deploy_prod; read -r -p "Weiter mit Enter..." _ ;;
+        9) build_and_start_api_dev; read -r -p "Weiter mit Enter..." _ ;;
+        10) ai_db_clear; read -r -p "Weiter mit Enter..." _ ;;
+        11) ai_agent_restart; read -r -p "Weiter mit Enter..." _ ;;
+        12) ai_agent_rebuild; read -r -p "Weiter mit Enter..." _ ;;
+        13) ai_full_reset; read -r -p "Weiter mit Enter..." _ ;;
+        14) ai_show_embeddings; read -r -p "Weiter mit Enter..." _ ;;
+        15) ai_test_endpoint; read -r -p "Weiter mit Enter..." _ ;;
+        16) ai_test_embed_query; read -r -p "Weiter mit Enter..." _ ;;
+        17) ai_test_semantic_search; read -r -p "Weiter mit Enter..." _ ;;
+        18) ai_rebuild_and_restart_all; read -r -p "Weiter mit Enter..." _ ;;
+        19) login_and_set_tokens; read -r -p "Weiter mit Enter..." _ ;;
+        20) exit 0 ;;
+      esac
+    fi
+
+    if [[ $key == "q" || $key == "Q" ]]; then
+      exit 0
+    fi
   done
 }
 
 # --- Entry -------------------------------------------------------------------
+show_hype_loader
 check_prereqs
 main_menu
