@@ -87,3 +87,4 @@ venv/
 *.sqlite3
 .history/
 *.bak
+\n# Trivy installation files\nLICENSE\ncontrib/\ntrivy_*.tar.gz
