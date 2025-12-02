@@ -22,9 +22,14 @@ model_loaded = False
 def load_model():
     global model, model_loaded
     logger.info("Loading model %s ...", MODEL_NAME)
-    model = SentenceTransformer(MODEL_NAME)
-    model_loaded = True
-    logger.info("Model loaded.")
+    try:
+        model = SentenceTransformer(MODEL_NAME)
+        model_loaded = True
+        logger.info("Model loaded.")
+    except Exception as err:
+        model = None
+        model_loaded = False
+        logger.error("Model load failed: %s", err)
 
 
 def db_connect_with_retry(retries=10, delay=2.0):
