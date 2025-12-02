@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -35,6 +36,7 @@ type ServiceStatus struct {
 
 // Orchestrator manages health checks for all services
 type Orchestrator struct {
+	mu       sync.RWMutex // CONCURRENCY FIX: Protects services map from concurrent access
 	services map[string]*ServiceStatus
 	logger   *slog.Logger
 	client   *http.Client
@@ -52,6 +54,9 @@ func NewOrchestrator(logger *slog.Logger) *Orchestrator {
 
 // RegisterService adds a service to monitor
 func (o *Orchestrator) RegisterService(name, url string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
 	o.services[name] = &ServiceStatus{
 		Name:        name,
 		URL:         url,
@@ -99,9 +104,14 @@ func (o *Orchestrator) HealthCheckLoop(ctx context.Context, interval time.Durati
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	// Read services count with lock
+	o.mu.RLock()
+	serviceCount := len(o.services)
+	o.mu.RUnlock()
+
 	o.logger.Info("Health check loop started",
 		slog.Duration("interval", interval),
-		slog.Int("services", len(o.services)),
+		slog.Int("services", serviceCount),
 	)
 
 	// Initial check
@@ -119,7 +129,17 @@ func (o *Orchestrator) HealthCheckLoop(ctx context.Context, interval time.Durati
 }
 
 func (o *Orchestrator) checkAllServices(ctx context.Context) {
+	// CONCURRENCY FIX: Create a copy of services slice to minimize lock time
+	// and prevent "concurrent map iteration and map write" panic
+	o.mu.RLock()
+	servicesCopy := make([]*ServiceStatus, 0, len(o.services))
 	for _, service := range o.services {
+		servicesCopy = append(servicesCopy, service)
+	}
+	o.mu.RUnlock()
+
+	// Check all services without holding the lock
+	for _, service := range servicesCopy {
 		o.checkService(ctx, service)
 	}
 	o.logSummary()
@@ -168,6 +188,9 @@ func (o *Orchestrator) checkService(ctx context.Context, service *ServiceStatus)
 }
 
 func (o *Orchestrator) logSummary() {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
 	healthy := 0
 	total := len(o.services)
 
@@ -186,15 +209,31 @@ func (o *Orchestrator) logSummary() {
 
 // GetServiceStatus returns current status of all services
 func (o *Orchestrator) GetServiceStatus() map[string]*ServiceStatus {
-	return o.services
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	// Return a copy to prevent external concurrent modification
+	statusCopy := make(map[string]*ServiceStatus, len(o.services))
+	for k, v := range o.services {
+		statusCopy[k] = v
+	}
+	return statusCopy
 }
 
 // PrintStatus prints current status to stdout
 func (o *Orchestrator) PrintStatus() {
+	// CONCURRENCY FIX: Copy services map to avoid concurrent iteration
+	o.mu.RLock()
+	servicesCopy := make([]*ServiceStatus, 0, len(o.services))
+	for _, service := range o.services {
+		servicesCopy = append(servicesCopy, service)
+	}
+	o.mu.RUnlock()
+
 	fmt.Println("\n=== Orchestrator Status ===")
 	fmt.Printf("Time: %s\n\n", time.Now().Format(time.RFC3339))
 
-	for _, service := range o.services {
+	for _, service := range servicesCopy {
 		status := "UNHEALTHY"
 		if service.Healthy {
 			status = "HEALTHY"
