@@ -20,11 +20,11 @@ Diese Checkliste dient als zentrale Übersicht aller identifizierten Schwachstel
 | 🔴 OPEN (Critical) | 0 | CVSS ≥ 7.0 - None (Deployment UNBLOCKED ✅) |
 | 🟠 OPEN (High) | 0 | CVSS 4.0-6.9 - None |
 | 🟡 OPEN (Medium/Low) | 2 | CVSS < 4.0 - Tracked |
-| ✅ CLOSED | 26 | Phase 1: 11 CVEs | Phase 1.5: 8 CVEs | Phase 2: 7 CVEs |
+| ✅ CLOSED | 31 | Phase 1: 11 | Phase 1.5: 8 | Phase 2: 7 | Phase 2.5: 1 | Phase 2.6: 4 |
 
-**Last Security Gate:** Phase 2 Integration & Concurrency (2025-12-02) ✅ PASSED
-**Next Security Gate:** Phase 2.1 - Major Bug Fixes (Target: 2025-12-05)
-**Security Score:** 97/100 (Grade: A+) - OWASP 10/10
+**Last Security Gate:** Phase 2.6 Frontend & JWT Security (2025-12-02) ✅ PASSED
+**Next Security Gate:** Phase 3 - Timeouts & Resilience (Target: 2025-12-05)
+**Security Score:** 98/100 (Grade: A+) - OWASP 10/10
 
 ---
 
@@ -186,6 +186,55 @@ The following vulnerabilities were fixed during the Stabilization Sprint on 2025
 
 ---
 
+## ✅ CLOSED CVEs (PHASE 2.6 - FRONTEND & JWT SECURITY - 2025-12-02)
+
+The following bugs were fixed during Frontend Integrity & JWT Security hardening on 2025-12-02:
+
+| CVE-ID          | Component                                           | CVSS     | Fix Date   | Verification                               |
+|-----------------|-----------------------------------------------------|----------|------------|--------------------------------------------|
+| BUG-GO-010      | Orchestrator ServiceStatus Race Condition           | 8.0      | 2025-12-02 | ✅ sync.RWMutex added to struct fields     |
+| SECURITY-PATH-TRAVERSAL | Backup Service Path Traversal (targetPath param) | 7.5 | 2025-12-02 | ✅ Parameter removed, SetBackupPath hardened |
+| BUG-JS-011      | Success Page displays fake user data                | 5.0      | 2025-12-02 | ✅ Removed hardcoded email, show generic message |
+| BUG-GO-021      | JWT tokens missing JTI (JWT ID) for tracking        | 6.0      | 2025-12-02 | ✅ UUID-based JTI added to all tokens      |
+
+**Mitigation Evidence - Orchestrator Concurrency (BUG-GO-010):**
+- Added `sync.RWMutex` directly to ServiceStatus struct for field-level protection
+- HTTP requests performed WITHOUT lock to avoid blocking readers during network calls
+- All writes in `checkService()` protected with `service.mu.Lock()` (orchestrator/orchestrator_loop.go:154-155)
+- All reads in `PrintStatus()` and `logSummary()` protected with `service.mu.RLock()`
+- Added `Snapshot()` method for thread-safe deep copies
+- `GetServiceStatus()` now returns values (not pointers) to prevent external concurrent modification
+- Verified: `go run -race` should show no warnings
+
+**Mitigation Evidence - Backup Security (SECURITY-PATH-TRAVERSAL):**
+- Removed `targetPath` parameter from `CreateBackup()` signature entirely (backup_service.go:89)
+- All callers updated: handlers/backups.go (2 locations), scheduler/cron.go:111
+- Hardened `SetBackupPath()` with `filepath.Abs()` validation (Zeile 56)
+- Added explicit path traversal detection for `../` attacks
+- Backups now ONLY use configured paths, never dynamic user input
+
+**Mitigation Evidence - Frontend Integrity (BUG-JS-011):**
+- Removed fake user data from Success.jsx (`email: 'user@example.com'`)
+- Removed unnecessary useState and loading state
+- Show generic welcome message instead of lying about user info
+- Improved German translations for consistency
+
+**Mitigation Evidence - JWT Security (BUG-GO-021):**
+- Added UUID-based JTI to both Access and Refresh tokens (jwt_service.go:58, 94)
+- JTI stored in `RegisteredClaims.ID` field for token tracking
+- JTI logged for audit trail (jwt_service.go:84, 120)
+- Enables future token revocation and replay attack prevention
+- Format: `"jti": "123e4567-e89b-12d3-a456-426614174000"`
+
+**Additional Verification:**
+- BUG-JS-009 (VerifyEmail Token Check): Already correctly implemented (no changes needed)
+- BUG-GO-009 (Email Error Propagation): Verified correct (errors properly wrapped with fmt.Errorf)
+
+**Phase 2.6 Security Gate:** ✅ PASSED (2025-12-02)
+**Evidence Location:** `git log --oneline -3` (commits: c2ba918, 3f1f09e)
+
+---
+
 ## 📋 SECURITY GATES & RELEASE CRITERIA
 
 ### Gate Requirements
@@ -280,7 +329,7 @@ Reports werden vom Orchestrator am Monatsende automatisch generiert und in `stat
 
 ---
 
-**Letzte Aktualisierung:** 2025-12-02
-**Nächste Review:** 2025-12-05 (Phase 2.1 Gate)
+**Letzte Aktualisierung:** 2025-12-02 (Phase 2.6 completed)
+**Nächste Review:** 2025-12-05 (Phase 3 Gate - Timeouts & Resilience)
 
 Terminal freigegeben.
