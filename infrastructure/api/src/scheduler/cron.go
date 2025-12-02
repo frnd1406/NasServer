@@ -69,7 +69,12 @@ func startLocked() error {
 	}
 
 	cronRunner = cron.New(cron.WithParser(cronParser))
-	if _, err := cronRunner.AddFunc(schedule, runBackupJob); err != nil {
+
+	job := func() {
+		runBackupJob(backupSvc, cfgRef, logger)
+	}
+
+	if _, err := cronRunner.AddFunc(schedule, job); err != nil {
 		return fmt.Errorf("register backup job: %w", err)
 	}
 
@@ -82,13 +87,7 @@ func startLocked() error {
 	return nil
 }
 
-func runBackupJob() {
-	mu.Lock()
-	svc := backupSvc
-	cfg := cfgRef
-	log := logger
-	mu.Unlock()
-
+func runBackupJob(svc *services.BackupService, cfg *config.Config, log *logrus.Logger) {
 	if svc == nil || cfg == nil {
 		return
 	}

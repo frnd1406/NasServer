@@ -28,6 +28,7 @@ model = None
 db_connection = None
 model_loaded = False
 db_connected = False
+model_lock = threading.Lock()
 
 
 def load_model():
@@ -42,11 +43,13 @@ def load_model():
         logger.info(f"Loading model: {model_name}")
         logger.info("This may take a few minutes on first run (downloading model)...")
 
-        model = SentenceTransformer(model_name)
+        temp_model = SentenceTransformer(model_name)
 
         # Test model with a sample encoding
-        test_embedding = model.encode("Hello, world!")
-        embedding_dim = len(test_embedding)
+        with model_lock:
+            model = temp_model
+            test_embedding = model.encode("Hello, world!")
+            embedding_dim = len(test_embedding)
 
         logger.info(f"✅ Model loaded successfully!")
         logger.info(f"   Model: {model_name}")
@@ -88,12 +91,18 @@ def health_check():
     Health check endpoint for Docker healthcheck.
     Returns 200 if model loaded and DB connected, 503 otherwise.
     """
+    embedding_dim = None
+    if model_loaded and model is not None:
+        with model_lock:
+            if model is not None: # Double check after lock
+                embedding_dim = len(model.encode("test"))
+
     status = {
         "status": "healthy" if (model_loaded and db_connected) else "unhealthy",
         "model_loaded": model_loaded,
         "database_connected": db_connected,
         "model_name": os.getenv("MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2"),
-        "embedding_dimension": len(model.encode("test")) if model_loaded else None
+        "embedding_dimension": embedding_dim
     }
 
     status_code = 200 if (model_loaded and db_connected) else 503
@@ -105,6 +114,12 @@ def status():
     """
     Detailed status endpoint.
     """
+    embedding_dim = None
+    if model_loaded and model is not None:
+        with model_lock:
+             if model is not None: # Double check after lock
+                embedding_dim = len(model.encode("test"))
+
     return jsonify({
         "service": "AI Knowledge Agent",
         "version": "1.0.0",
@@ -112,7 +127,7 @@ def status():
         "model_loaded": model_loaded,
         "database_connected": db_connected,
         "model_name": os.getenv("MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2") if model_loaded else None,
-        "embedding_dimension": len(model.encode("test")) if model_loaded else None,
+        "embedding_dimension": embedding_dim,
         "ready": model_loaded and db_connected
     })
 
@@ -123,8 +138,14 @@ def embed_text():
     Generate embeddings for text (future endpoint).
     Currently returns placeholder.
     """
-    if not model_loaded:
+    if not model_loaded or model is None:
         return jsonify({"error": "Model not loaded"}), 503
+
+    # Example of locking for a real embedding call
+    # with model_lock:
+    #     data = request.get_json()
+    #     text = data.get("text")
+    #     embedding = model.encode(text)
 
     return jsonify({
         "message": "Embedding endpoint - coming soon in Phase 2.3",

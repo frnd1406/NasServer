@@ -112,10 +112,13 @@ function showLogoutOverlay(seconds) {
   if (typeof document === "undefined") return;
   ensureLogoutStyles();
 
-  if (!logoutOverlay) {
-    logoutOverlay = document.createElement("div");
-    logoutOverlay.className = "session-warning-overlay";
-    logoutOverlay.innerHTML = `
+  let overlay = document.getElementById("session-warning-overlay");
+
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "session-warning-overlay";
+    overlay.className = "session-warning-overlay";
+    overlay.innerHTML = `
       <div class="session-warning-card">
         <div class="session-warning-pill">Warnung · Session läuft ab</div>
         <div class="session-warning-title">Gleich wirst du abgemeldet</div>
@@ -127,13 +130,16 @@ function showLogoutOverlay(seconds) {
         <p class="session-warning-subtle">Bitte melde dich erneut an, um weiterzuarbeiten.</p>
       </div>
     `;
-    document.body.appendChild(logoutOverlay);
-    requestAnimationFrame(() => {
-      logoutOverlay.classList.add("is-visible");
-    });
+    document.body.appendChild(overlay);
   }
+  
+  // Make sure to show it
+  requestAnimationFrame(() => {
+    overlay.classList.add("is-visible");
+  });
 
-  const timerEl = logoutOverlay.querySelector("[data-session-timer]");
+
+  const timerEl = overlay.querySelector("[data-session-timer]");
   if (!timerEl) return;
 
   let remaining = seconds;
@@ -239,14 +245,23 @@ function extractErrorMessage(res, data) {
 async function performRequest(path, options, tokenOverride) {
   const accessToken = tokenOverride || localStorage.getItem("accessToken");
   let res;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+
   try {
     res = await fetch(buildUrl(path), {
       ...options,
+      signal: controller.signal,
       credentials: 'include', // <--- WICHTIG: HINZUFÜGEN [Fix für BUG-JS-002]
       headers: buildHeaders(accessToken, options.headers || {}),
     });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${ (options.timeout || 30000) / 1000} seconds`);
+    }
     throw new Error(`Cannot reach API at ${API_BASE_URL} (${err.message})`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const isJson = res.headers.get("content-type")?.includes("application/json");

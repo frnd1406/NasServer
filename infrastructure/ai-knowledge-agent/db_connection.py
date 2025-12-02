@@ -35,16 +35,17 @@ class DatabaseConnection:
         Connect to PostgreSQL with retry logic.
         Waits for database to be ready if it's still starting up.
         """
+        # Create SQLAlchemy engine once
+        if not self.engine:
+            self.engine = create_engine(
+                self.database_url,
+                poolclass=NullPool,  # No connection pooling for simplicity
+                echo=False
+            )
+
         for attempt in range(1, self.max_retries + 1):
             try:
                 logger.info(f"Attempt {attempt}/{self.max_retries}: Connecting to PostgreSQL...")
-
-                # Create SQLAlchemy engine
-                self.engine = create_engine(
-                    self.database_url,
-                    poolclass=NullPool,  # No connection pooling for simplicity
-                    echo=False
-                )
 
                 # Test connection
                 with self.engine.connect() as conn:
@@ -79,6 +80,9 @@ class DatabaseConnection:
                     time.sleep(self.retry_delay)
                 else:
                     logger.error(f"❌ Failed to connect after {self.max_retries} attempts")
+                    # Cleanup engine on final failure
+                    if self.engine:
+                        self.engine.dispose()
                     raise
 
         return False

@@ -100,12 +100,25 @@ func (sr *ServiceRegistry) Get(name string) (*ServiceRegistryEntry, bool) {
 
 // List returns all registered services
 func (sr *ServiceRegistry) List() []*ServiceRegistryEntry {
-	sr.mu.RLock()
-	defer sr.mu.RUnlock()
-
 	entries := make([]*ServiceRegistryEntry, 0, len(sr.services))
 	for _, entry := range sr.services {
-		entries = append(entries, entry)
+		// Deep copy the entry to prevent race conditions
+		newEntry := &ServiceRegistryEntry{
+			Name:         entry.Name,
+			URL:          entry.URL,
+			RegisteredAt: entry.RegisteredAt,
+		}
+		if entry.Tags != nil {
+			newEntry.Tags = make([]string, len(entry.Tags))
+			copy(newEntry.Tags, entry.Tags)
+		}
+		if entry.Metadata != nil {
+			newEntry.Metadata = make(map[string]string)
+			for k, v := range entry.Metadata {
+				newEntry.Metadata[k] = v
+			}
+		}
+		entries = append(entries, newEntry)
 	}
 
 	return entries
@@ -120,7 +133,23 @@ func (sr *ServiceRegistry) FindByTag(tag string) []*ServiceRegistryEntry {
 	for _, entry := range sr.services {
 		for _, t := range entry.Tags {
 			if t == tag {
-				entries = append(entries, entry)
+				// Deep copy the entry to prevent race conditions
+				newEntry := &ServiceRegistryEntry{
+					Name:         entry.Name,
+					URL:          entry.URL,
+					RegisteredAt: entry.RegisteredAt,
+				}
+				if entry.Tags != nil {
+					newEntry.Tags = make([]string, len(entry.Tags))
+					copy(newEntry.Tags, entry.Tags)
+				}
+				if entry.Metadata != nil {
+					newEntry.Metadata = make(map[string]string)
+					for k, v := range entry.Metadata {
+						newEntry.Metadata[k] = v
+					}
+				}
+				entries = append(entries, newEntry)
 				break
 			}
 		}
