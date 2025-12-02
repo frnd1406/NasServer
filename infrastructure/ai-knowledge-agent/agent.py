@@ -51,6 +51,11 @@ def load_model():
             test_embedding = model.encode("Hello, world!")
             embedding_dim = len(test_embedding)
 
+        # FIX [BUG-PY-009]: Validate embedding dimension matches expected model output
+        expected_dim = 384  # all-MiniLM-L6-v2 produces 384-dimensional embeddings
+        if embedding_dim != expected_dim:
+            raise ValueError(f"Model produced unexpected embedding dimension: {embedding_dim}, expected {expected_dim}")
+
         logger.info(f"✅ Model loaded successfully!")
         logger.info(f"   Model: {model_name}")
         logger.info(f"   Embedding dimension: {embedding_dim}")
@@ -155,7 +160,9 @@ def embed_text():
 
 def run_flask():
     """Run Flask server in a separate thread"""
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    # FIX [BUG-PY-012]: Replace hardcoded port with environment variable
+    port = int(os.getenv("FLASK_PORT", "8000"))
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 
 def main():
@@ -184,9 +191,10 @@ def main():
 
     # Step 3: Start health check server
     logger.info("Step 3/3: Starting health check server...")
+    port = int(os.getenv("FLASK_PORT", "8000"))
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    logger.info("✅ Health check server started on port 8000")
+    logger.info(f"✅ Health check server started on port {port}")
 
     logger.info("=" * 60)
     logger.info("🚀 AI Knowledge Agent is READY")
@@ -194,7 +202,7 @@ def main():
     logger.info("Status:")
     logger.info(f"  ✅ Model loaded: {model_loaded}")
     logger.info(f"  ✅ Database connected: {db_connected}")
-    logger.info(f"  ✅ Health check: http://localhost:8000/health")
+    logger.info(f"  ✅ Health check: http://localhost:{port}/health")
     logger.info("Awaiting commands...")
     logger.info("=" * 60)
 

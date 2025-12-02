@@ -25,6 +25,13 @@ class DatabaseConnection:
     def __init__(self, max_retries=10, retry_delay=5):
         self.database_url = os.getenv("DATABASE_URL",
             "postgresql://nas_user:nas_password@postgres:5432/nas_db")
+
+        # FIX [BUG-PY-013]: Validate DB password is not default in production
+        if "nas_password" in self.database_url or "nas_dev_password" in self.database_url:
+            logger.warning("⚠️  WARNING: Using default database password! Change DATABASE_URL in production!")
+            if os.getenv("ENVIRONMENT", "development") == "production":
+                raise ValueError("Default database password not allowed in production environment")
+
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.engine = None

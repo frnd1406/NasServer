@@ -156,8 +156,15 @@ func (s *BackupService) CreateBackup() (BackupInfo, error) {
 		return nil
 	})
 
-	_ = tw.Close()
-	_ = gw.Close()
+	// FIX [BUG-GO-015]: Check Close() errors - data may not be fully flushed
+	closeErr := tw.Close()
+	if closeErr != nil && err == nil {
+		err = closeErr
+	}
+	closeErr = gw.Close()
+	if closeErr != nil && err == nil {
+		err = closeErr
+	}
 
 	if err != nil {
 		_ = os.Remove(dest)

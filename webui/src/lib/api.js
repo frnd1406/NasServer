@@ -26,6 +26,11 @@ function normalizeBaseUrl(url) {
 const API_BASE_URL = normalizeBaseUrl(envBaseUrl)
 const LOGOUT_COUNTDOWN_SECONDS = 4
 
+// FIX [BUG-JS-019]: Validate and warn about API URL configuration
+if (!envBaseUrl && import.meta.env.PROD) {
+  console.warn('⚠️  VITE_API_BASE_URL not configured, using derived URL:', API_BASE_URL)
+}
+
 function buildUrl(path = '') {
   if (!path.startsWith('/')) {
     return `${API_BASE_URL}/${path}`

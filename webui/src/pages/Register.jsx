@@ -15,6 +15,13 @@ function Register() {
     e.preventDefault()
     setError('')
 
+    // FIX [BUG-JS-018]: Add password strength validation
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
+    if (!passwordRegex.test(password)) {
+      setError('Password must be at least 8 characters with uppercase, lowercase, number, and special character')
+      return
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return

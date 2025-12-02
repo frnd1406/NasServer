@@ -95,7 +95,13 @@ def process_file():
 
     conn = None  # Initialize for try-finally safety
     try:
-        data = request.get_json()
+        # FIX [BUG-PY-014]: Add explicit JSON parse error logging
+        try:
+            data = request.get_json()
+        except Exception as json_err:
+            logger.error("JSON parse error: %s", json_err)
+            return jsonify({"error": "Invalid JSON payload"}), 400
+
         if not data:
             return jsonify({"error": "Missing JSON payload"}), 400
 
@@ -228,7 +234,8 @@ def embed_query():
 def main():
     load_model()
     db_connect_with_retry()
-    app.run(host="0.0.0.0", port=5000)
+    # FIX [BUG-PY-015]: Explicitly disable Flask debug mode for production safety
+    app.run(host="0.0.0.0", port=5000, debug=False)
 
 
 if __name__ == "__main__":

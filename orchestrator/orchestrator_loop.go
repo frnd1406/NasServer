@@ -97,10 +97,13 @@ func (o *Orchestrator) CheckHealth(ctx context.Context, service *ServiceStatus) 
 	}
 
 	resp, err := o.client.Do(req)
+	// FIX [BUG-GO-005]: Close response body even on error to prevent connection leak
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)

@@ -24,21 +24,35 @@ def index_file(filepath):
         "mime_type": "text/plain"
     }
 
-    try:
-        response = requests.post(
-            AI_AGENT_URL,
-            json=payload,
-            timeout=30
-        )
+    # FIX [BUG-PY-007]: Add retry logic with exponential backoff
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(
+                AI_AGENT_URL,
+                json=payload,
+                timeout=30
+            )
 
-        if response.status_code == 200:
-            data = response.json()
-            return True, data
-        else:
-            return False, f"HTTP {response.status_code}: {response.text}"
+            if response.status_code == 200:
+                data = response.json()
+                return True, data
+            elif attempt < max_retries:
+                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                print(f"  Retry {attempt}/{max_retries} after {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                return False, f"HTTP {response.status_code}: {response.text}"
 
-    except Exception as e:
-        return False, str(e)
+        except Exception as e:
+            if attempt < max_retries:
+                wait_time = 2 ** attempt
+                print(f"  Retry {attempt}/{max_retries} after {wait_time}s (error: {e})...")
+                time.sleep(wait_time)
+            else:
+                return False, str(e)
+
+    return False, "Max retries reached"
 
 
 def main():

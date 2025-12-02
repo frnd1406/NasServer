@@ -43,8 +43,18 @@ func main() {
 	log.Printf("Starte Monitoring-Agent. Ziel: %s, Intervall: %s", apiURL, interval)
 
 	for {
-		if err := sendMetrics(client, apiURL, apiKey, agentID); err != nil {
-			log.Printf("Sende-Fehler: %v", err)
+		// FIX [BUG-GO-011]: Add retry logic (3 attempts) to handle transient failures
+		for attempt := 1; attempt <= 3; attempt++ {
+			if err := sendMetrics(client, apiURL, apiKey, agentID); err != nil {
+				if attempt < 3 {
+					log.Printf("Sende-Fehler (Versuch %d/3): %v, Wiederholung in 2s...", attempt, err)
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				log.Printf("Sende-Fehler nach 3 Versuchen: %v", err)
+			} else {
+				break
+			}
 		}
 
 		<-ticker.C

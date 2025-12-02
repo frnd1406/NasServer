@@ -7,6 +7,7 @@ import Success from './pages/Success'
 import Dashboard from './pages/Dashboard'
 import VerifyEmail from './pages/VerifyEmail'
 import Metrics from './pages/Metrics'
+import NotFound from './pages/NotFound'
 import { useEffect } from 'react'
 
 function AppRoutes() {
@@ -19,7 +20,8 @@ function AppRoutes() {
       <Route path="/success" element={<Success />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* FIX [BUG-JS-020]: Add proper 404 page instead of redirect */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

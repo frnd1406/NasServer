@@ -54,9 +54,10 @@ func main() {
 	defer ticker.Stop()
 
 	for {
+		// FIX [BUG-GO-006]: Use defer cancel() to ensure context is only cancelled after runCycle completes
 		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 		runCycle(ctx, db, lookback, logger)
-		cancel()
+		cancel() // Cancel immediately after runCycle completes (no defer needed here as we want cleanup before waiting)
 		<-ticker.C
 	}
 }
