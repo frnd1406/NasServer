@@ -36,12 +36,13 @@ export default function Dashboard() {
   const [snapshotCount, setSnapshotCount] = useState(0);
 
   // Load Backup Info
-  const loadBackupStatus = async () => {
+  const loadBackupStatus = async (signal) => {
     try {
       // Load Settings (Schedule, Auto-Backup Status)
       const settingsRes = await fetch(`${API_BASE}/api/v1/system/settings`, {
         credentials: "include",
         headers: authHeaders(),
+        signal, // AbortController signal
       });
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
@@ -52,6 +53,7 @@ export default function Dashboard() {
       const backupsRes = await fetch(`${API_BASE}/api/v1/backups`, {
         credentials: "include",
         headers: authHeaders(),
+        signal, // AbortController signal
       });
       if (backupsRes.ok) {
         const backupsData = await backupsRes.json();
@@ -67,6 +69,11 @@ export default function Dashboard() {
         }
       }
     } catch (err) {
+      // Ignore AbortError - this is expected when component unmounts
+      if (err.name === 'AbortError') {
+        console.log('Backup status fetch aborted (component unmounted)');
+        return;
+      }
       console.error("Fehler beim Laden der Backup-Infos:", err);
     } finally {
       setLoading(false);
@@ -74,17 +81,29 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadBackupStatus();
+    // BUG-JS-006 FIX: AbortController to prevent state updates on unmounted component
+    const controller = new AbortController();
+
+    loadBackupStatus(controller.signal);
+
     // Refresh every 30 seconds
-    const interval = setInterval(loadBackupStatus, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      loadBackupStatus(controller.signal);
+    }, 30000);
+
+    // Cleanup: abort pending requests and clear interval
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+    };
   }, []);
 
   // Load latest system metrics
-  const loadLatestMetric = async () => {
+  const loadLatestMetric = async (signal) => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/system/metrics?limit=1`, {
         credentials: "include",
+        signal, // AbortController signal
       });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -94,15 +113,32 @@ export default function Dashboard() {
       setLatestMetric(items[0] || null);
       setMetricsError("");
     } catch (err) {
+      // Ignore AbortError - this is expected when component unmounts
+      if (err.name === 'AbortError') {
+        console.log('Metrics fetch aborted (component unmounted)');
+        return;
+      }
       setMetricsError(err.message || "Metrics nicht verfügbar");
       setLatestMetric(null);
     }
   };
 
   useEffect(() => {
-    loadLatestMetric();
-    const id = setInterval(loadLatestMetric, 15000);
-    return () => clearInterval(id);
+    // BUG-JS-006 FIX: AbortController to prevent state updates on unmounted component
+    const controller = new AbortController();
+
+    loadLatestMetric(controller.signal);
+
+    // Refresh every 15 seconds
+    const id = setInterval(() => {
+      loadLatestMetric(controller.signal);
+    }, 15000);
+
+    // Cleanup: abort pending requests and clear interval
+    return () => {
+      controller.abort();
+      clearInterval(id);
+    };
   }, []);
 
   // Calculate next backup time
