@@ -107,7 +107,8 @@ func runBackupJob(svc *services.BackupService, cfg *config.Config, log *logrus.L
 		return
 	}
 
-	if _, err := svc.CreateBackup(cfg.BackupStoragePath); err != nil {
+	// SECURITY FIX [BUG-GO-010]: Removed dynamic path parameter - uses configured path only
+	if _, err := svc.CreateBackup(); err != nil {
 		if log != nil {
 			log.WithError(err).Error("backup scheduler: failed to create backup")
 		}

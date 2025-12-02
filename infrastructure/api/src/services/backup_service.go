@@ -51,10 +51,24 @@ func (s *BackupService) SetBackupPath(path string) error {
 	if cleanPath == "" || cleanPath == "." || cleanPath == string(os.PathSeparator) {
 		return fmt.Errorf("invalid backup path")
 	}
-	if err := os.MkdirAll(cleanPath, 0o755); err != nil {
+
+	// SECURITY FIX: Ensure path is absolute to prevent relative path traversal
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return fmt.Errorf("resolve absolute path: %w", err)
+	}
+
+	// SECURITY FIX: Block path traversal attempts (e.g., "../../../etc")
+	// If cleaned absolute path doesn't match the absolute version of the cleaned path,
+	// there's likely a traversal attempt
+	if absPath != filepath.Clean(absPath) {
+		return fmt.Errorf("path traversal attempt detected")
+	}
+
+	if err := os.MkdirAll(absPath, 0o755); err != nil {
 		return fmt.Errorf("ensure backup path: %w", err)
 	}
-	s.backupPath = cleanPath
+	s.backupPath = absPath
 	return nil
 }
 
@@ -86,13 +100,9 @@ func (s *BackupService) ListBackups() ([]BackupInfo, error) {
 	return result, nil
 }
 
-func (s *BackupService) CreateBackup(targetPath string) (BackupInfo, error) {
-	if targetPath != "" && targetPath != s.backupPath {
-		if err := s.SetBackupPath(targetPath); err != nil {
-			return BackupInfo{}, err
-		}
-	}
-
+func (s *BackupService) CreateBackup() (BackupInfo, error) {
+	// SECURITY FIX [BUG-GO-010]: Removed targetPath parameter to prevent path traversal attacks
+	// Backups must always use the configured backupPath, not dynamic user-controlled paths
 	if s.backupPath == "" {
 		return BackupInfo{}, fmt.Errorf("backup path not configured")
 	}

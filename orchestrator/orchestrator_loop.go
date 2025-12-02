@@ -23,6 +23,7 @@ type HealthResponse struct {
 
 // ServiceStatus tracks service health over time
 type ServiceStatus struct {
+	mu              sync.RWMutex // CONCURRENCY FIX: Protects all fields from concurrent access
 	Name            string
 	URL             string
 	Healthy         bool
@@ -32,6 +33,24 @@ type ServiceStatus struct {
 	TotalChecks     int
 	TotalFailures   int
 	Uptime          float64
+}
+
+// Snapshot returns a thread-safe copy of the ServiceStatus
+func (s *ServiceStatus) Snapshot() ServiceStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return ServiceStatus{
+		Name:            s.Name,
+		URL:             s.URL,
+		Healthy:         s.Healthy,
+		LastCheck:       s.LastCheck,
+		LastHealthy:     s.LastHealthy,
+		ConsecutiveFails: s.ConsecutiveFails,
+		TotalChecks:     s.TotalChecks,
+		TotalFailures:   s.TotalFailures,
+		Uptime:          s.Uptime,
+	}
 }
 
 // Orchestrator manages health checks for all services
@@ -146,10 +165,15 @@ func (o *Orchestrator) checkAllServices(ctx context.Context) {
 }
 
 func (o *Orchestrator) checkService(ctx context.Context, service *ServiceStatus) {
+	// Perform HTTP request WITHOUT lock to avoid blocking readers during network call
+	err := o.CheckHealth(ctx, service)
+
+	// CONCURRENCY FIX: Lock for writing results to prevent race conditions
+	service.mu.Lock()
+	defer service.mu.Unlock()
+
 	service.TotalChecks++
 	service.LastCheck = time.Now()
-
-	err := o.CheckHealth(ctx, service)
 
 	if err != nil {
 		service.Healthy = false
@@ -195,7 +219,12 @@ func (o *Orchestrator) logSummary() {
 	total := len(o.services)
 
 	for _, service := range o.services {
-		if service.Healthy {
+		// CONCURRENCY FIX: Read lock for accessing service.Healthy
+		service.mu.RLock()
+		isHealthy := service.Healthy
+		service.mu.RUnlock()
+
+		if isHealthy {
 			healthy++
 		}
 	}
@@ -207,15 +236,15 @@ func (o *Orchestrator) logSummary() {
 	)
 }
 
-// GetServiceStatus returns current status of all services
-func (o *Orchestrator) GetServiceStatus() map[string]*ServiceStatus {
+// GetServiceStatus returns current status of all services as deep copies
+func (o *Orchestrator) GetServiceStatus() map[string]ServiceStatus {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	// Return a copy to prevent external concurrent modification
-	statusCopy := make(map[string]*ServiceStatus, len(o.services))
+	// CONCURRENCY FIX: Return deep copies (values not pointers) to prevent concurrent modification
+	statusCopy := make(map[string]ServiceStatus, len(o.services))
 	for k, v := range o.services {
-		statusCopy[k] = v
+		statusCopy[k] = v.Snapshot()
 	}
 	return statusCopy
 }
@@ -234,6 +263,8 @@ func (o *Orchestrator) PrintStatus() {
 	fmt.Printf("Time: %s\n\n", time.Now().Format(time.RFC3339))
 
 	for _, service := range servicesCopy {
+		// CONCURRENCY FIX: Read lock for accessing all service fields
+		service.mu.RLock()
 		status := "UNHEALTHY"
 		if service.Healthy {
 			status = "HEALTHY"
@@ -248,6 +279,7 @@ func (o *Orchestrator) PrintStatus() {
 		fmt.Printf("  Total Checks:     %d\n", service.TotalChecks)
 		fmt.Printf("  Total Failures:   %d\n", service.TotalFailures)
 		fmt.Printf("  Uptime:           %.2f%%\n\n", service.Uptime)
+		service.mu.RUnlock()
 	}
 }
 

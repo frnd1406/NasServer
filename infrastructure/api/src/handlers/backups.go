@@ -23,7 +23,8 @@ func BackupListHandler(backupSvc *services.BackupService, logger *logrus.Logger)
 
 func BackupCreateHandler(backupSvc *services.BackupService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		b, err := backupSvc.CreateBackup(cfg.BackupStoragePath)
+		// SECURITY FIX [BUG-GO-010]: Removed dynamic path parameter - uses configured path only
+		b, err := backupSvc.CreateBackup()
 		if err != nil {
 			logger.WithError(err).Warn("backup: create failed")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create backup"})
@@ -58,7 +59,8 @@ func BackupRestoreHandler(backupSvc *services.BackupService, cfg *config.Config,
 
 		// SECURITY: Create emergency pre-restore backup BEFORE destructive operation
 		logger.Info("Creating emergency pre-restore backup...")
-		emergencyBackup, err := backupSvc.CreateBackup(cfg.BackupStoragePath)
+		// SECURITY FIX [BUG-GO-010]: Removed dynamic path parameter - uses configured path only
+		emergencyBackup, err := backupSvc.CreateBackup()
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
