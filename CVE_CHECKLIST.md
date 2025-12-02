@@ -166,6 +166,24 @@ The following bugs were fixed during Phase 2 Integration & Cleanup on 2025-12-02
 **Phase 2 Integration Gate:** ✅ PASSED (2025-12-02)
 **Evidence Location:** `status/PHASE_2_INTEGRATION_REPORT.md`
 
+
+---
+
+## ✅ CLOSED CVEs (PHASE 2.5 - STABILIZATION SPRINT - 2025-12-02)
+
+The following vulnerabilities were fixed during the Stabilization Sprint on 2025-12-02:
+
+| CVE-ID          | Component                                           | CVSS     | Fix Date   | Verification                               |
+|-----------------|-----------------------------------------------------|----------|------------|--------------------------------------------|
+| CVE-2025-32434  | `torch` library in AI Knowledge Agent               | 9.8      | 2025-12-02 | ✅ Updated to `2.6.0` in `requirements.txt` |
+
+**Mitigation Evidence:**
+- `torch` version updated from `2.1.0` and `2.3.1` to `2.6.0` in `infrastructure/ai-knowledge-agent/requirements.txt` and `infrastructure/ai_knowledge_agent/requirements.txt`.
+- `trivy fs .` scan confirms the critical vulnerability is resolved.
+
+**Phase 2.5 Security Gate:** ✅ PASSED (2025-12-02)
+**Evidence Location:** `git log -p -1`
+
 ---
 
 ## 📋 SECURITY GATES & RELEASE CRITERIA

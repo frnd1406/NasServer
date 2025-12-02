@@ -242,6 +242,7 @@ async function performRequest(path, options, tokenOverride) {
   try {
     res = await fetch(buildUrl(path), {
       ...options,
+      credentials: 'include', // <--- WICHTIG: HINZUFÜGEN [Fix für BUG-JS-002]
       headers: buildHeaders(accessToken, options.headers || {}),
     });
   } catch (err) {
