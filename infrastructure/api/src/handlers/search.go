@@ -59,6 +59,8 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 		rows, err := db.QueryContext(c.Request.Context(), `
 			SELECT file_path, content, 1 - (embedding <=> $1::vector) as similarity
 			FROM file_embeddings
+			WHERE file_path LIKE '/mnt/data/%'          -- 🔒 only user data
+			  AND file_path NOT LIKE '%/.trash/%'       -- 🗑️ ignore trash
 			ORDER BY embedding <=> $1::vector
 			LIMIT 10;
 		`, embeddingStr)

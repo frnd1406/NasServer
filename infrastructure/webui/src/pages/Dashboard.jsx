@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { authHeaders } from "../utils/auth";
+import { useState } from "react";
+import { useSystemHealth } from "../hooks/useSystemHealth";
 import {
   Activity,
   HardDrive,
@@ -13,10 +13,6 @@ import {
   Server,
 } from "lucide-react";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  window.location.origin;
-
 // Glass Card Component
 const GlassCard = ({ children, className = "" }) => (
   <div className={`relative overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl shadow-2xl ${className}`}>
@@ -28,118 +24,12 @@ const GlassCard = ({ children, className = "" }) => (
 );
 
 export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [lastBackup, setLastBackup] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [latestMetric, setLatestMetric] = useState(null);
-  const [metricsError, setMetricsError] = useState("");
-  const [snapshotCount, setSnapshotCount] = useState(0);
-
-  // Load Backup Info
-  const loadBackupStatus = async (signal) => {
-    try {
-      // Load Settings (Schedule, Auto-Backup Status)
-      const settingsRes = await fetch(`${API_BASE}/api/v1/system/settings`, {
-        credentials: "include",
-        headers: authHeaders(),
-        signal, // AbortController signal
-      });
-      if (settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        setSettings(settingsData);
-      }
-
-      // Load Last Backup & Count
-      const backupsRes = await fetch(`${API_BASE}/api/v1/backups`, {
-        credentials: "include",
-        headers: authHeaders(),
-        signal, // AbortController signal
-      });
-      if (backupsRes.ok) {
-        const backupsData = await backupsRes.json();
-        const backups = backupsData.items || [];
-        setSnapshotCount(backups.length);
-
-        if (backups.length > 0) {
-          // Sort by date and get the most recent
-          const sorted = backups.sort((a, b) =>
-            new Date(b.modTime || b.created_at) - new Date(a.modTime || a.created_at)
-          );
-          setLastBackup(sorted[0]);
-        }
-      }
-    } catch (err) {
-      // Ignore AbortError - this is expected when component unmounts
-      if (err.name === 'AbortError') {
-        console.log('Backup status fetch aborted (component unmounted)');
-        return;
-      }
-      console.error("Fehler beim Laden der Backup-Infos:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // BUG-JS-006 FIX: AbortController to prevent state updates on unmounted component
-    const controller = new AbortController();
-
-    loadBackupStatus(controller.signal);
-
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadBackupStatus(controller.signal);
-    }, 30000);
-
-    // Cleanup: abort pending requests and clear interval
-    return () => {
-      controller.abort();
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Load latest system metrics
-  const loadLatestMetric = async (signal) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/system/metrics?limit=1`, {
-        credentials: "include",
-        signal, // AbortController signal
-      });
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      const items = data.items || [];
-      setLatestMetric(items[0] || null);
-      setMetricsError("");
-    } catch (err) {
-      // Ignore AbortError - this is expected when component unmounts
-      if (err.name === 'AbortError') {
-        console.log('Metrics fetch aborted (component unmounted)');
-        return;
-      }
-      setMetricsError(err.message || "Metrics nicht verfügbar");
-      setLatestMetric(null);
-    }
-  };
-
-  useEffect(() => {
-    // BUG-JS-006 FIX: AbortController to prevent state updates on unmounted component
-    const controller = new AbortController();
-
-    loadLatestMetric(controller.signal);
-
-    // Refresh every 15 seconds
-    const id = setInterval(() => {
-      loadLatestMetric(controller.signal);
-    }, 15000);
-
-    // Cleanup: abort pending requests and clear interval
-    return () => {
-      controller.abort();
-      clearInterval(id);
-    };
-  }, []);
+  const { data, isLoading } = useSystemHealth();
+  const settings = data?.settings;
+  const lastBackup = data?.lastBackup;
+  const snapshotCount = data?.snapshotCount || 0;
+  const latestMetric = data?.latestMetric;
+  const metricsError = data?.metricsError;
 
   // Calculate next backup time
   const getNextBackupTime = () => {
@@ -304,7 +194,7 @@ export default function Dashboard() {
                 <ShieldAlert size={24} className="text-slate-400" />
               )}
             </div>
-            {loading && (
+            {isLoading && (
               <Loader2 size={16} className="animate-spin text-slate-400" />
             )}
           </div>

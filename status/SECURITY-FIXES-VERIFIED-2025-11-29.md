@@ -15,6 +15,7 @@ All HIGH-severity security findings from the pre-Phase 2.1 penetration test have
 - **Before**: 78/100 (Grade B) - 3 HIGH, 6 MEDIUM findings
 - **After**: 93/100 (Grade A) - 0 HIGH, 3 MEDIUM findings
 - **OWASP Top 10 Coverage**: 10/10 (100%)
+- **Scope Hardening**: Semantic Search jetzt auf `/mnt/data/**` beschränkt, `/.trash/` ausgeschlossen (Data Leakage Mitigation)
 
 ---
 
@@ -115,6 +116,27 @@ backupV1.DELETE("/:id",
 ```
 
 **Located in**: `api/src/main.go:182-185`
+
+---
+
+### TEST 5: Semantic Search Scope (Data Leakage)
+**Status**: ✅ PASS
+**Finding**: Suchergebnisse konnten Pfade außerhalb von `/mnt/data` enthalten (Information Disclosure)
+**Fix**: SQL-Filter auf `/mnt/data/%` mit Ausschluss von `/.trash/`
+
+**Implementation**:
+```go
+rows, err := db.QueryContext(ctx, `
+  SELECT file_path, content, 1 - (embedding <=> $1::vector) as similarity
+  FROM file_embeddings
+  WHERE file_path LIKE '/mnt/data/%'
+    AND file_path NOT LIKE '%/.trash/%'
+  ORDER BY embedding <=> $1::vector
+  LIMIT 10;
+`, embeddingStr)
+```
+
+**Located in**: `infrastructure/api/src/handlers/search.go`
 
 ---
 
