@@ -54,7 +54,10 @@ func CSRFMiddleware(redis *database.RedisClient, logger *logrus.Logger) gin.Hand
 			return
 		}
 
-		ctx := context.Background()
+		// FIX [BUG-GO-017]: Use request context with timeout instead of Background
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
 		key := "csrf:" + sessionID
 		storedToken, err := redis.Get(ctx, key).Result()
 
@@ -93,8 +96,11 @@ func GenerateCSRFToken(redis *database.RedisClient, sessionID string) (string, e
 
 	token := base64.URLEncoding.EncodeToString(tokenBytes)
 
+	// FIX [BUG-GO-017]: Add timeout to prevent hanging on slow Redis
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	// Store in Redis with 24-hour expiry
-	ctx := context.Background()
 	key := "csrf:" + sessionID
 	if err := redis.Set(ctx, key, token, 24*time.Hour).Err(); err != nil {
 		return "", err

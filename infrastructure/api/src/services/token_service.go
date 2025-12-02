@@ -32,9 +32,13 @@ func (s *TokenService) GenerateVerificationToken(ctx context.Context, userID str
 		return "", err
 	}
 
+	// FIX [BUG-GO-016]: Add Redis timeout to prevent hanging on slow Redis
+	redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	// Store in Redis with 24-hour expiry
 	key := "verify:" + token
-	if err := s.redis.Set(ctx, key, userID, 24*time.Hour).Err(); err != nil {
+	if err := s.redis.Set(redisCtx, key, userID, 24*time.Hour).Err(); err != nil {
 		s.logger.WithError(err).Error("Failed to store verification token")
 		return "", fmt.Errorf("failed to store verification token: %w", err)
 	}
@@ -49,15 +53,21 @@ func (s *TokenService) GenerateVerificationToken(ctx context.Context, userID str
 
 // ValidateVerificationToken validates and consumes a verification token
 func (s *TokenService) ValidateVerificationToken(ctx context.Context, token string) (string, error) {
+	// FIX [BUG-GO-016]: Add Redis timeout to prevent hanging on slow Redis
+	redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	key := "verify:" + token
-	userID, err := s.redis.Get(ctx, key).Result()
+	userID, err := s.redis.Get(redisCtx, key).Result()
 	if err != nil {
 		s.logger.WithError(err).Debug("Verification token not found or expired")
 		return "", fmt.Errorf("invalid or expired token")
 	}
 
-	// Delete token (single-use)
-	if err := s.redis.Del(ctx, key).Err(); err != nil {
+	// Delete token (single-use) - use fresh timeout context
+	delCtx, delCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer delCancel()
+	if err := s.redis.Del(delCtx, key).Err(); err != nil {
 		s.logger.WithError(err).Warn("Failed to delete verification token")
 	}
 
@@ -72,9 +82,13 @@ func (s *TokenService) GeneratePasswordResetToken(ctx context.Context, userID st
 		return "", err
 	}
 
+	// FIX [BUG-GO-016]: Add Redis timeout to prevent hanging on slow Redis
+	redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	// Store in Redis with 1-hour expiry
 	key := "reset:" + token
-	if err := s.redis.Set(ctx, key, userID, 1*time.Hour).Err(); err != nil {
+	if err := s.redis.Set(redisCtx, key, userID, 1*time.Hour).Err(); err != nil {
 		s.logger.WithError(err).Error("Failed to store password reset token")
 		return "", fmt.Errorf("failed to store password reset token: %w", err)
 	}
@@ -89,15 +103,21 @@ func (s *TokenService) GeneratePasswordResetToken(ctx context.Context, userID st
 
 // ValidatePasswordResetToken validates and consumes a password reset token
 func (s *TokenService) ValidatePasswordResetToken(ctx context.Context, token string) (string, error) {
+	// FIX [BUG-GO-016]: Add Redis timeout to prevent hanging on slow Redis
+	redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	key := "reset:" + token
-	userID, err := s.redis.Get(ctx, key).Result()
+	userID, err := s.redis.Get(redisCtx, key).Result()
 	if err != nil {
 		s.logger.WithError(err).Debug("Password reset token not found or expired")
 		return "", fmt.Errorf("invalid or expired token")
 	}
 
-	// Delete token (single-use)
-	if err := s.redis.Del(ctx, key).Err(); err != nil {
+	// Delete token (single-use) - use fresh timeout context
+	delCtx, delCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer delCancel()
+	if err := s.redis.Del(delCtx, key).Err(); err != nil {
 		s.logger.WithError(err).Warn("Failed to delete password reset token")
 	}
 

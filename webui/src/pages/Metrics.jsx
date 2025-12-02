@@ -67,6 +67,10 @@ export default function Metrics() {
 
   useEffect(() => {
     let mounted = true
+    let retryDelay = POLL_MS
+    let timeoutId = null
+
+    // FIX [BUG-JS-014]: Exponential backoff to prevent DoS on backend during errors
     const fetchData = async () => {
       try {
         const [metricsRes, alertsRes] = await Promise.allSettled([
@@ -81,10 +85,13 @@ export default function Metrics() {
           setMetric(item || null)
           setError('')
           setLastUpdated(new Date())
+          retryDelay = POLL_MS // Reset delay on success
         } else {
           setMetric(null)
           setError('API nicht erreichbar')
           setLastUpdated(null)
+          // Exponential backoff on error (max 60s)
+          retryDelay = Math.min(retryDelay * 2, 60000)
         }
 
         if (alertsRes.status === 'fulfilled') {
@@ -93,6 +100,8 @@ export default function Metrics() {
         } else {
           setAlerts([])
           setAlertsError('Alerts konnten nicht geladen werden')
+          // Exponential backoff on error (max 60s)
+          retryDelay = Math.min(retryDelay * 2, 60000)
         }
       } catch (err) {
         if (!mounted) return
@@ -100,14 +109,22 @@ export default function Metrics() {
         setAlertsError('Alerts konnten nicht geladen werden')
         setMetric(null)
         setAlerts([])
+        // Exponential backoff on error (max 60s)
+        retryDelay = Math.min(retryDelay * 2, 60000)
+      }
+
+      // Schedule next fetch with current retry delay
+      if (mounted) {
+        timeoutId = setTimeout(fetchData, retryDelay)
       }
     }
 
+    // Initial fetch
     fetchData()
-    const interval = setInterval(fetchData, POLL_MS)
+
     return () => {
       mounted = false
-      clearInterval(interval)
+      if (timeoutId) clearTimeout(timeoutId)
     }
   }, [])
 
