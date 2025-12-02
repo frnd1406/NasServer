@@ -31,7 +31,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, username, email, passwo
 	query := `
 		INSERT INTO users (username, email, password_hash, email_verified)
 		VALUES ($1, $2, $3, FALSE)
-		RETURNING id, username, email, password_hash, email_verified, verified_at, created_at, updated_at
+		RETURNING id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
 	`
 
 	err := r.db.QueryRowContext(ctx, query, username, email, passwordHash).Scan(
@@ -39,6 +39,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, username, email, passwo
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.Role,
 		&user.EmailVerified,
 		&user.VerifiedAt,
 		&user.CreatedAt,
@@ -63,7 +64,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 	user := &models.User{}
 
 	query := `
-		SELECT id, username, email, password_hash, email_verified, verified_at, created_at, updated_at
+		SELECT id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -73,6 +74,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.Role,
 		&user.EmailVerified,
 		&user.VerifiedAt,
 		&user.CreatedAt,
@@ -96,7 +98,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	user := &models.User{}
 
 	query := `
-		SELECT id, username, email, password_hash, email_verified, verified_at, created_at, updated_at
+		SELECT id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -106,6 +108,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.Role,
 		&user.EmailVerified,
 		&user.VerifiedAt,
 		&user.CreatedAt,
@@ -129,7 +132,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 	user := &models.User{}
 
 	query := `
-		SELECT id, username, email, password_hash, email_verified, verified_at, created_at, updated_at
+		SELECT id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -139,6 +142,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User,
 		&user.Username,
 		&user.Email,
 		&user.PasswordHash,
+		&user.Role,
 		&user.EmailVerified,
 		&user.VerifiedAt,
 		&user.CreatedAt,

@@ -112,6 +112,14 @@ export default function Dashboard() {
           {/* CPU, RAM, Storage - Clean Bars without timestamps */}
           <div className="space-y-4 flex-1">
 
+            {metricsError && (
+              <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
+                <ShieldAlert size={20} className="text-red-400 mx-auto mb-2" />
+                <p className="text-red-400 font-semibold">Metriken konnten nicht geladen werden</p>
+                <p className="text-slate-400 text-xs mt-1">{metricsError}</p>
+              </div>
+            )}
+
             {/* CPU */}
             <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
               <div className="flex items-center justify-between mb-3">
