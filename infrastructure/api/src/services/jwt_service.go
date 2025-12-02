@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/nas-ai/api/src/config"
 	"github.com/sirupsen/logrus"
 )
@@ -53,11 +54,15 @@ func NewJWTService(cfg *config.Config, logger *logrus.Logger) (*JWTService, erro
 // GenerateAccessToken generates a new access token (15 minute expiry)
 func (s *JWTService) GenerateAccessToken(userID, email string) (string, error) {
 	now := time.Now()
+	// SECURITY FIX [BUG-GO-021]: Generate unique JTI (JWT ID) for token tracking and replay prevention
+	jti := uuid.New().String()
+
 	claims := TokenClaims{
 		UserID:    userID,
 		Email:     email,
 		TokenType: AccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti, // Unique token identifier for tracking and revocation
 			ExpiresAt: jwt.NewNumericDate(now.Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
@@ -76,6 +81,7 @@ func (s *JWTService) GenerateAccessToken(userID, email string) (string, error) {
 		"user_id": userID,
 		"email":   email,
 		"type":    AccessToken,
+		"jti":     jti,
 	}).Debug("Access token generated")
 
 	return tokenString, nil
@@ -84,11 +90,15 @@ func (s *JWTService) GenerateAccessToken(userID, email string) (string, error) {
 // GenerateRefreshToken generates a new refresh token (7 days expiry)
 func (s *JWTService) GenerateRefreshToken(userID, email string) (string, error) {
 	now := time.Now()
+	// SECURITY FIX [BUG-GO-021]: Generate unique JTI (JWT ID) for token tracking and replay prevention
+	jti := uuid.New().String()
+
 	claims := TokenClaims{
 		UserID:    userID,
 		Email:     email,
 		TokenType: RefreshToken,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti, // Unique token identifier for tracking and revocation
 			ExpiresAt: jwt.NewNumericDate(now.Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
@@ -107,6 +117,7 @@ func (s *JWTService) GenerateRefreshToken(userID, email string) (string, error) 
 		"user_id": userID,
 		"email":   email,
 		"type":    RefreshToken,
+		"jti":     jti,
 	}).Debug("Refresh token generated")
 
 	return tokenString, nil
