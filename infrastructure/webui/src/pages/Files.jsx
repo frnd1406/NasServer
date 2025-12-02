@@ -207,9 +207,22 @@ export default function Files() {
         const headers = authHeaders();
         delete headers['Content-Type']; // Falls vorhanden, entfernen
 
+        // SECURITY FIX: Explizit CSRF Token aus localStorage holen und setzen
+        // Verlasse dich nicht nur auf authHeaders() - erzwinge Token-Präsenz
+        const csrfToken = localStorage.getItem('csrfToken') || localStorage.getItem('csrf_token');
+        if (csrfToken) {
+          headers['X-CSRF-Token'] = csrfToken;
+        } else {
+          console.warn('⚠️ WARNING: No CSRF token found in localStorage');
+        }
+
         const uploadUrl = `${API_BASE}/api/v1/storage/upload`;
         console.log('Upload URL:', uploadUrl);
-        console.log('Upload headers:', headers);
+        console.log('Upload Headers prepared:', {
+          ...headers,
+          Authorization: headers.Authorization ? 'REDACTED (present)' : 'MISSING',
+          'X-CSRF-Token': headers['X-CSRF-Token'] ? 'PRESENT' : 'MISSING'
+        });
 
         const res = await fetch(uploadUrl, {
           method: "POST",

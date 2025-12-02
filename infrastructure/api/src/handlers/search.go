@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lib/pq"
 	"github.com/nas-ai/api/src/database"
 	"github.com/sirupsen/logrus"
 )
@@ -48,13 +48,20 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 			return
 		}
 
-		// Use pq.Array for safe parameter binding - prevents SQL injection
+		// Convert embedding float64 slice to pgvector format string
+		// pgvector requires format: '[0.1,0.2,0.3]'
+		parts := make([]string, len(embedding))
+		for i, v := range embedding {
+			parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		}
+		embeddingStr := "[" + strings.Join(parts, ",") + "]"
+
 		rows, err := db.QueryContext(c.Request.Context(), `
-			SELECT file_path, content, 1 - (embedding <=> $1) as similarity
+			SELECT file_path, content, 1 - (embedding <=> $1::vector) as similarity
 			FROM file_embeddings
-			ORDER BY embedding <=> $1
+			ORDER BY embedding <=> $1::vector
 			LIMIT 10;
-		`, pq.Array(embedding))
+		`, embeddingStr)
 		if err != nil {
 			logger.WithError(err).Error("Failed to run similarity search query")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database query failed"})

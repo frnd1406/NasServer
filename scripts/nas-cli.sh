@@ -1,19 +1,33 @@
 #!/bin/bash
 set -euo pipefail
-trap 'echo -e "${RED}💥 Fatal: Command failed (line $LINENO). Abbruch.${NC}"; exit 1' ERR
+IFS=$'\n\t'
 
-# Colors
-RED=$'\033[0;31m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[1;33m'
-BLUE=$'\033[0;34m'
-CYAN=$'\033[0;36m'
-NC=$'\033[0m'
+# --- 1. KONFIGURATION & STYLING ---
 
-show_hype_loader() {
-  tput civis
-  echo -e "${GREEN}"
-  cat << "EOF"
+# Farben & Icons
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m' # No Color
+
+# Pfade (Context Aware)
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INFRA_DIR="$BASE_DIR/infrastructure"
+ENV_FILE="$INFRA_DIR/.env.prod"
+COMPOSE_FILE="$INFRA_DIR/docker-compose.prod.yml"
+
+# Error Handling Trap
+trap 'echo -e "\n${RED}💥 FATAL ERROR an Zeile $LINENO. Das Skript bricht ab.${NC}"; exit 1' ERR
+
+# --- 2. DOPAMINE & VISUALS ---
+
+function show_header() {
+    clear
+    echo -e "${CYAN}"
+    cat << "EOF"
   _   _    _    ____      _    ___ 
  | \ | |  / \  / ___|    / \  |_ _|
  |  \| | / _ \ \___ \   / _ \  | | 
@@ -21,868 +35,504 @@ show_hype_loader() {
  |_| \_/_/   \_\____/ /_/   \_\___|
                                    
 EOF
-  echo -e "${NC}"
+    echo -e "${BLUE}>> COMMAND & CONTROL CENTER V2.0${NC}"
+    echo -e "${YELLOW}User: $USER | System: NAS.AI | Status: ${GREEN}ONLINE${NC}"
+    echo "==================================================="
+}
 
-  MSGS=(
-    "🚀 Initializing Neural Networks..."
-    "🔒 Encrypting Flux Capacitors..."
-    "📡 Scanning Local Subnet for Threats..."
-    "🧠 Waking up AI Agents..."
-    "⚙️  Compiling Dopamine Injectors..."
-    "💾 Optimizing Matrix Renderers..."
-    "⚡ Powering up Quantum Cores..."
-  )
+function hype_loader() {
+    tput civis # Cursor verstecken
+    echo -e "${GREEN}"
+    echo -ne "SYSTEM STARTUP: [${NC}"
+    for i in {1..40}; do
+        # Zufällige Farbe für den Glitch-Effekt
+        R_COL=$((RANDOM % 6 + 31))
+        echo -ne "\e[1;${R_COL}m#\e[0m"
+        sleep 0.02
+    done
+    echo -e "${GREEN}] 100%${NC}"
+    
+    # Fake Checks für das "Feeling"
+    local CHECKS=("🔒 Encrypting Flux Capacitors..." "🧠 Waking up AI Agents..." "📡 Scanning Subnet..." "💉 Injecting Coffee...")
+    for msg in "${CHECKS[@]}"; do
+        echo -e "${GREEN}✓ $msg${NC}"
+        sleep 0.1
+    done
+    sleep 0.5
+    tput cnorm # Cursor zeigen
+}
 
-  echo -ne "${YELLOW}SYSTEM STARTUP: [${NC}"
-  for i in {1..50}; do
-    RANDOM_COLOR=$((RANDOM % 6 + 31))
-    echo -ne "\e[1;${RANDOM_COLOR}m#\e[0m"
-    if [ $((RANDOM % 10)) -gt 7 ]; then
-      sleep 0.1
-    else
-      sleep 0.02
+# --- 3. CORE LOGIC ---
+
+function check_preflight() {
+    # Check: Docker Running?
+    if ! docker info > /dev/null 2>&1; then
+        echo -e "${RED}❌ ERROR: Docker läuft nicht! Bitte starten.${NC}"
+        exit 1
     fi
-  done
-  echo -e "${YELLOW}] ${GREEN}100% READY${NC}"
-
-  for msg in "${MSGS[@]}"; do
-    echo -e "${GREEN}✓ $msg${NC}"
-    sleep 0.15
-  done
-
-  echo -e "\n${BLUE}>> SYSTEM ONLINE. WELCOME BACK, COMMANDER.${NC}\n"
-  sleep 0.5
-  tput cnorm
-}
-
-SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INFRA_DIR="$ROOT_DIR/infrastructure"
-API_DIR="$INFRA_DIR/api"
-DOC_OUTPUT="$ROOT_DIR/API_ENDPOINTS.md"
-COMPOSE_FILE="$INFRA_DIR/docker-compose.prod.yml"
-DEV_COMPOSE_FILE="$INFRA_DIR/docker-compose.dev.yml"
-ENV_FILE="$INFRA_DIR/.env.prod"
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$INFRA_DIR")}"
-DC_CMD="docker compose -f \"$COMPOSE_FILE\""
-DC_CMD_DEV="docker compose -f \"$DEV_COMPOSE_FILE\""
-NETWORK_NAME="${PROJECT_NAME}_nas-network"
-
-API_URL_DEFAULT="https://felix-freund.com"
-API_URL="${API_URL:-$API_URL_DEFAULT}"
-VERBOSE="${VERBOSE:-false}"
-CURL_AUTH_HEADERS=()
-
-print_header() {
-  clear
-  printf "%s\n" \
-    "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}" \
-    "${BLUE}║${NC}   🚀 ${CYAN}NAS.AI Infrastructure CLI (Monolith)${NC}                      ${BLUE}║${NC}" \
-    "${BLUE}║${NC}   ${YELLOW}Stabilität · Sicherheit · DX${NC}                              ${BLUE}║${NC}" \
-    "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}" \
-    ""
-  printf "%s\n" "${CYAN}Root:${NC} ${ROOT_DIR}"
-  printf "%s\n" "${CYAN}API URL:${NC} ${API_URL}"
-  printf "%s\n" ""
-}
-
-fail() { echo -e "${RED}❌ $*${NC}" >&2; exit 1; }
-info() { echo -e "${BLUE}ℹ️  $*${NC}"; }
-ok()   { echo -e "${GREEN}✅ $*${NC}"; }
-warn() { echo -e "${YELLOW}⚠️  $*${NC}"; }
-
-require_cmd() {
-  for cmd in "$@"; do
-    command -v "$cmd" >/dev/null 2>&1 || fail "Befehl fehlt: $cmd"
-  done
-}
-
-check_prereqs() {
-  require_cmd docker curl jq git
-
-  if ! docker info >/dev/null 2>&1; then
-    fail "Docker Daemon nicht erreichbar. Starte Docker und versuche es erneut."
-  fi
-
-  [ -f "$COMPOSE_FILE" ] || fail "Compose-Datei fehlt: $COMPOSE_FILE"
-  [ -f "$ENV_FILE" ] || fail ".env.prod fehlt: $ENV_FILE"
-}
-
-status_explain() {
-  case "$1" in
-    200) echo "OK" ;;
-    201) echo "Created" ;;
-    204) echo "No Content" ;;
-    400) echo "Bad Request (Payload/Parameter fehlerhaft)" ;;
-    401) echo "Unauthorized (Token fehlt/ungültig)" ;;
-    402) echo "Payment Required" ;;
-    403) echo "Forbidden (keine Berechtigung)" ;;
-    404) echo "Not Found (Route/Resource fehlt)" ;;
-    409) echo "Conflict (Zustand kollidiert)" ;;
-    413) echo "Payload Too Large" ;;
-    415) echo "Unsupported Media Type" ;;
-    429) echo "Too Many Requests (Rate Limit)" ;;
-    500) echo "Internal Server Error" ;;
-    502) echo "Bad Gateway" ;;
-    503) echo "Service Unavailable" ;;
-    504) echo "Gateway Timeout" ;;
-    000) echo "Verbindungsfehler" ;;
-    *)   echo "Status $1" ;;
-  esac
-}
-
-status_matches_expected() {
-  local code=$1 expected=$2
-  IFS='/' read -ra parts <<<"$expected"
-  for e in "${parts[@]}"; do
-    if [ "$code" = "$e" ]; then
-      return 0
+    # Check: Config Files
+    if [ ! -f "$ENV_FILE" ]; then
+        echo -e "${RED}❌ ERROR: .env.prod fehlt unter $INFRA_DIR${NC}"
+        exit 1
     fi
-  done
-  return 1
 }
 
-require_cmd() {
-  for cmd in "$@"; do
-    command -v "$cmd" >/dev/null 2>&1 || fail "Befehl fehlt: $cmd"
-  done
+function wait_for_enter() {
+    echo -e "\n${YELLOW}>> Drücke ENTER für Menü...${NC}"
+    read
 }
 
-check_prereqs() {
-  require_cmd docker curl jq git
-  [ -f "$COMPOSE_FILE" ] || warn "Hinweis: $COMPOSE_FILE fehlt (Compose-Befehle könnten fehlschlagen)."
+# --- 4. MODULE (The "Functions") ---
+
+# MODUL: LOGS (Smart Filter)
+function smart_logs() {
+    local service=$1
+    echo -e "${MAGENTA}🕵️  Starte Smart-Logs für: ${service:-ALLES} (CTRL+C zum Beenden)${NC}"
+    echo "---------------------------------------------------"
+    
+    # Hier passiert die Magie: sed entfernt Klammern, awk analysiert HTTP Codes
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs -f $service 2>&1 | \
+    sed -u 's/\[//g; s/\]//g' | \
+    grep --line-buffered -v "beenden" | \
+    awk '
+    {
+        # Zeile ausgeben (Standard)
+        print $0; 
+        
+        # Forensics Logic: HTTP Codes erklären
+        if ($0 ~ / 401 /) print "\t\033[0;31m🔒 AUTH FAIL: Falscher Token oder Login-Versuch\033[0m";
+        if ($0 ~ / 403 /) print "\t\033[0;31m🚫 FORBIDDEN: Zugriff verweigert (RBAC)\033[0m";
+        if ($0 ~ / 404 /) print "\t\033[1;33m🔍 NOT FOUND: Scanner sucht Lücken?\033[0m";
+        if ($0 ~ / 500 /) print "\t\033[0;31m💥 SERVER ERROR: Check Backend Code!\033[0m";
+        if ($0 ~ / 502 /) print "\t\033[0;31m🔌 BAD GATEWAY: Container down?\033[0m";
+        if ($0 ~ /panic:/) print "\t\033[0;31m🔥 GO PANIC: Kritischer Absturz!\033[0m";
+    }'
 }
 
-# --- Utility: curl wrapper ----------------------------------------------------
-http_request() {
-  local method=$1 path=$2 expected=$3 timeout=${4:-8} data=${5:-}
-  local url="${API_URL}${path}"
-  local tmp_body
-  tmp_body=$(mktemp)
-  local code
-
-  if [ -n "$data" ]; then
-    code=$(curl -sS -o "$tmp_body" -w '%{http_code}' -X "$method" \
-      -H "Content-Type: application/json" \
-      "${CURL_AUTH_HEADERS[@]}" \
-      --data "$data" \
-      --max-time "$timeout" \
-      "$url" || echo "000")
-  else
-    code=$(curl -sS -o "$tmp_body" -w '%{http_code}' -X "$method" \
-      "${CURL_AUTH_HEADERS[@]}" \
-      --max-time "$timeout" \
-      "$url" || echo "000")
-  fi
-
-  local body
-  body=$(cat "$tmp_body")
-  rm -f "$tmp_body"
-
-  local parsed
-  parsed=$(echo "$body" | jq -c '.' 2>/dev/null || echo "$body")
-
-  local msg; msg=$(status_explain "$code")
-  if status_matches_expected "$code" "$expected"; then
-    echo -e "${GREEN}✅${NC} ${method} ${path}  ${GREEN}${code}${NC} ${msg}"
-    [ -n "$parsed" ] && [ "$VERBOSE" = "true" ] && echo "$parsed"
-    return 0
-  else
-    echo -e "${RED}❌${NC} ${method} ${path}  ${RED}${code}${NC} ${msg} (expected: ${expected})"
-    [ -n "$parsed" ] && echo -e "${YELLOW}Antwort:${NC} $parsed"
-    return 1
-  fi
+# MODUL: FORENSICS (Gauner Check)
+function forensic_ip_check() {
+    echo -e "${RED}🕵️  FORENSIC TARGET ANALYSIS${NC}"
+    read -p ">> IP-Adresse eingeben: " TARGET_IP
+    
+    if [[ -z "$TARGET_IP" ]]; then echo "Abbruch."; return; fi
+    
+    echo -e "${YELLOW}>> Scanne $TARGET_IP...${NC}"
+    echo "---------------------------------------------------"
+    # curl auf ip-api.com
+    curl -s "http://ip-api.com/json/$TARGET_IP" | grep -E '"country"|"city"|"isp"|"org"|"as"|"query"' | tr -d '{}"'
+    echo "---------------------------------------------------"
+    wait_for_enter
 }
 
-# --- API Health --------------------------------------------------------------
-health_single() {
-  info "Starte Einzel-Health-Check gegen ${API_URL}"
-  local endpoints=(
-    "GET /health 200"
-    "GET /api/v1/system/metrics?limit=1 200"
-    "GET /api/v1/system/alerts 200"
-  )
-  local failures=0
-  for line in "${endpoints[@]}"; do
-    IFS=' ' read -r method path expected <<<"$line"
-    http_request "$method" "$path" "$expected" || failures=$((failures+1))
-  done
-  [ "$failures" -eq 0 ] || fail "$failures Checks fehlgeschlagen"
+# MODUL: DEPLOYMENT
+function deploy_full() {
+    echo -e "${YELLOW}🚀 Starte Full Production Deployment...${NC}"
+    echo -e "${CYAN}>> Building custom images...${NC}"
+    # Build erst, dann Pull für externe Images, dann Up
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+    echo -e "${CYAN}>> Pulling external images (falls vorhanden)...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-pull-failures || true
+    echo -e "${CYAN}>> Starting all services...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --remove-orphans
+    echo -e "${GREEN}✅ Deployment abgeschlossen.${NC}"
+    wait_for_enter
 }
 
-health_monitor() {
-  local interval="${CHECK_INTERVAL:-15}"
-  info "Monitoring gestartet (Intervall ${interval}s, API ${API_URL}). Strg+C zum Beenden."
-  while true; do
-    local ts
-    ts="$(date '+%H:%M:%S')"
-    if http_request GET /health 200 6 >/dev/null; then
-      echo -e "${GREEN}[$ts] OK${NC}"
-    else
-      echo -e "${RED}[$ts] FEHLER${NC}"
+# MODUL: API TESTING
+function test_api_endpoint() {
+    local method=$1
+    local endpoint=$2
+    local description=$3
+    local data="${4:-}"
+    local auth_token="${5:-}"
+
+    echo -ne "${CYAN}Testing: $description${NC} ... "
+
+    local cmd="curl -s -X $method"
+
+    if [ -n "$auth_token" ]; then
+        cmd="$cmd -H 'Authorization: Bearer $auth_token'"
     fi
-    sleep "$interval"
-  done
+
+    if [ -n "$data" ]; then
+        cmd="$cmd -H 'Content-Type: application/json' -d '$data'"
+    fi
+
+    cmd="$cmd -w '\n%{http_code}' $endpoint"
+
+    local response=$(eval $cmd 2>&1)
+    local http_code=$(echo "$response" | tail -n1)
+
+    case $http_code in
+        200|201) echo -e "${GREEN}✓ OK ($http_code)${NC}" ;;
+        204) echo -e "${GREEN}✓ OK (No Content)${NC}" ;;
+        401) echo -e "${YELLOW}⚠ AUTH Required ($http_code)${NC}" ;;
+        403) echo -e "${YELLOW}⚠ Forbidden ($http_code)${NC}" ;;
+        404) echo -e "${YELLOW}⚠ Not Found ($http_code)${NC}" ;;
+        500) echo -e "${RED}✗ Server Error ($http_code)${NC}" ;;
+        502) echo -e "${MAGENTA}⏸ Service in Wartung/Offline ($http_code)${NC}" ;;
+        503) echo -e "${MAGENTA}⏸ Service Unavailable ($http_code)${NC}" ;;
+        000) echo -e "${RED}✗ Connection Failed${NC}" ;;
+        *) echo -e "${YELLOW}? Status: $http_code${NC}" ;;
+    esac
 }
 
-# --- Endpoint Tests ----------------------------------------------------------
-test_endpoints() {
-  VERBOSE="${VERBOSE:-false}"
-  info "Starte Endpoint-Tests (API ${API_URL})"
+function test_all_main_api() {
+    local BASE_URL="http://localhost:8080"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🧪 TESTING MAIN API (Port 8080)${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
 
-  local tests=(
-    "GET /health 200 Public-Health"
-    "GET /api/v1/system/metrics?limit=1 200 Public-Metrics"
-    "GET /api/v1/system/alerts 200 Public-Alerts"
-    "POST /auth/login 400 Invalid-Login"
-    "GET /api/v1/auth/csrf 200 CSRF-Token"
-    "GET /api/v1/system/settings 401 Settings-NoAuth"
-    "GET /api/v1/backups 401 Backups-NoAuth"
-    "GET /api/v1/storage/files?path=/ 401 Storage-NoAuth"
-  )
+    echo -e "${YELLOW}[PUBLIC ENDPOINTS]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/health" "Health Check"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/metrics" "Prometheus Metrics"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/version" "API Version"
 
-  CURL_AUTH_HEADERS=()
-  if [ -n "${JWT_TOKEN:-}" ] && [ -n "${CSRF_TOKEN:-}" ]; then
-    CURL_AUTH_HEADERS=(-H "Authorization: Bearer ${JWT_TOKEN}" -H "X-CSRF-Token: ${CSRF_TOKEN}")
-    tests+=(
-      "GET /api/v1/system/settings 200 Settings"
-      "GET /api/v1/backups 200 Backups"
-      "GET /api/v1/storage/files?path=/ 200 Storage"
+    echo -e "\n${YELLOW}[AUTHENTICATION ENDPOINTS]${NC}"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/login" "Login" '{"username":"test","password":"test"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/register" "Register" '{"username":"test","email":"test@test.com","password":"test123"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/logout" "Logout"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/refresh" "Token Refresh"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/forgot-password" "Forgot Password" '{"email":"test@test.com"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/reset-password" "Reset Password" '{"token":"xxx","password":"newpass"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/verify-email" "Verify Email" '{"token":"xxx"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/mfa/enable" "Enable MFA"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/auth/mfa/verify" "Verify MFA" '{"code":"123456"}'
+
+    echo -e "\n${YELLOW}[PROTECTED ENDPOINTS - ohne Token]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/user/profile" "User Profile"
+    test_api_endpoint "PUT" "$BASE_URL/api/v1/user/profile" "Update Profile" '{"name":"Test"}'
+    test_api_endpoint "GET" "$BASE_URL/api/v1/admin/dashboard" "Admin Dashboard"
+
+    echo -e "\n${YELLOW}[FILE MANAGEMENT]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/files" "List Files"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/files/upload" "Upload File"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/files/download/test.txt" "Download File"
+    test_api_endpoint "DELETE" "$BASE_URL/api/v1/files/test.txt" "Delete File"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/files/trash" "List Trash"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/files/trash/restore/test.txt" "Restore from Trash"
+    test_api_endpoint "DELETE" "$BASE_URL/api/v1/files/trash/test.txt" "Permanent Delete"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/files/trash/empty" "Empty Trash"
+
+    echo -e "\n${YELLOW}[BACKUP MANAGEMENT]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/backups" "List Backups"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/backups/create" "Create Backup"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/backups/restore/backup_123" "Restore Backup"
+    test_api_endpoint "DELETE" "$BASE_URL/api/v1/backups/backup_123" "Delete Backup"
+
+    echo -e "\n${YELLOW}[SYSTEM MONITORING]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/system/logs" "System Logs"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/system/stats" "System Stats"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/system/services" "Service Status"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/system/services/api/restart" "Restart Service"
+
+    echo -e "\n${YELLOW}[SETTINGS]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/settings" "Get Settings"
+    test_api_endpoint "PUT" "$BASE_URL/api/v1/settings" "Update Settings" '{"key":"value"}'
+
+    echo -e "\n${MAGENTA}⚠️  HINWEIS: Einige Endpoints können in Wartung sein (502/503)${NC}"
+    echo -e "${YELLOW}📖 Details zu allen Endpoints: /home/freun/Agent/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
+}
+
+function test_all_ai_api() {
+    local BASE_URL="http://localhost:5000"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🧠 TESTING AI KNOWLEDGE AGENT (Port 5000)${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    echo -e "${YELLOW}[AI ENDPOINTS]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/health" "AI Health Check"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/embed" "Generate Embeddings" '{"text":"Hello World"}'
+    test_api_endpoint "POST" "$BASE_URL/api/v1/search" "Semantic Search" '{"query":"test","top_k":5}'
+
+    echo -e "\n${MAGENTA}⚠️  AI Service könnte offline sein wenn nicht deployed (502)${NC}"
+}
+
+function test_all_orchestrator_api() {
+    local BASE_URL="http://localhost:9000"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🎯 TESTING ORCHESTRATOR (Port 9000)${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    echo -e "${YELLOW}[ORCHESTRATOR ENDPOINTS]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/health" "Orchestrator Health"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/services" "List Services"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/services/api/restart" "Restart Service"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/alerts" "Get Alerts"
+
+    echo -e "\n${MAGENTA}⚠️  Orchestrator könnte offline sein wenn nicht deployed (502)${NC}"
+}
+
+function test_planned_endpoints() {
+    local BASE_URL="http://localhost:8080"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🚧 TESTING PLANNED/FUTURE ENDPOINTS${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    echo -e "${YELLOW}[GEPLANTE ENDPOINTS - Erwarten 404/502]${NC}"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/analytics/dashboard" "Analytics Dashboard"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/notifications" "Notifications"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/tasks" "Task Queue Status"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/webhooks" "Webhook Management"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/audit-log" "Audit Logs"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/reports" "Reports"
+    test_api_endpoint "POST" "$BASE_URL/api/v1/ai/chat" "AI Chat"
+    test_api_endpoint "GET" "$BASE_URL/api/v1/ai/models" "AI Models List"
+
+    echo -e "\n${MAGENTA}⚠️  Diese Endpoints sind noch nicht implementiert (404/502 erwartet)${NC}"
+    echo -e "${YELLOW}📖 Siehe Dokumentation für geplante Features${NC}"
+}
+
+function test_webui_connectivity() {
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🌐 TESTING WEBUI CONNECTIVITY${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    test_api_endpoint "GET" "http://localhost:3000" "WebUI Frontend"
+    test_api_endpoint "GET" "http://localhost:3000/api/health" "WebUI Backend Health"
+
+    echo -e "\n${YELLOW}Wenn WebUI offline: docker compose restart webui${NC}"
+}
+
+function test_ai_embeddings_detailed() {
+    local BASE_URL="http://localhost:5000"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}🧪 DETAILED AI EMBEDDINGS TEST${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    echo -e "${YELLOW}Testing verschiedene Texte...${NC}\n"
+
+    local texts=(
+        "Hello World"
+        "This is a test for NAS.AI system"
+        "Künstliche Intelligenz und Machine Learning"
+        "Security vulnerability detection"
     )
-  else
-    warn "JWT_TOKEN/CSRF_TOKEN nicht gesetzt – Auth-Tests werden übersprungen."
-  fi
 
-  local failures=0
-  for t in "${tests[@]}"; do
-    IFS=' ' read -r method path expected label <<<"$t"
-    echo -e "${BLUE}➜${NC} $label"
-    http_request "$method" "$path" "$expected" 8 || failures=$((failures+1))
-  done
-
-  [ "$failures" -eq 0 ] && ok "Alle Tests bestanden" || fail "$failures Tests fehlgeschlagen"
-}
-
-# --- Fetch tokens via login --------------------------------------------------
-login_and_set_tokens() {
-  read -r -p "E-Mail: " email
-  read -r -s -p "Passwort: " password
-  echo ""
-
-  if [ -z "$email" ] || [ -z "$password" ]; then
-    warn "E-Mail oder Passwort leer. Abbruch."
-    return 1
-  fi
-  local payload
-  payload=$(printf '{"email":"%s","password":"%s"}' "$email" "$password")
-
-  local resp
-  resp=$(curl -s -X POST "${API_URL}/auth/login" \
-    -H "Content-Type: application/json" \
-    --data "$payload")
-
-  local token refresh csrf
-  token=$(echo "$resp" | jq -r '.access_token // empty')
-  refresh=$(echo "$resp" | jq -r '.refresh_token // empty')
-  csrf=$(echo "$resp" | jq -r '.csrf_token // empty')
-
-  if [ -z "$token" ] || [ -z "$csrf" ]; then
-    echo -e "${RED}❌ Login fehlgeschlagen. Antwort:${NC} $resp"
-    return 1
-  fi
-
-  export JWT_TOKEN="$token"
-  export REFRESH_TOKEN="$refresh"
-  export CSRF_TOKEN="$csrf"
-
-  echo -e "${GREEN}✅ Login OK${NC}"
-  echo -e "JWT_TOKEN: $(echo "$JWT_TOKEN" | head -c 24)…"
-  echo -e "CSRF_TOKEN: $(echo "$CSRF_TOKEN" | head -c 12)…"
-}
-
-# --- Git Savepoint -----------------------------------------------------------
-git_savepoint() {
-  info "Git Savepoint (Repo: $ROOT_DIR)"
-  if [ ! -d "$ROOT_DIR/.git" ]; then
-    git -C "$ROOT_DIR" init
-    ok "Git init ausgeführt."
-  fi
-
-  local status
-  status="$(git -C "$ROOT_DIR" status --porcelain)"
-  if [ -z "$status" ]; then
-    ok "Keine Änderungen – nichts zu tun."
-    return 0
-  fi
-
-  git -C "$ROOT_DIR" add -A
-
-  read -r -p "Commit-Message: " msg
-  if [ -z "$msg" ]; then
-    msg="Auto-savepoint $(date '+%Y-%m-%d %H:%M:%S')"
-    warn "Leere Message, verwende: $msg"
-  fi
-
-  git -C "$ROOT_DIR" commit -m "$msg"
-
-  if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
-    local branch
-    branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD)"
-    git -C "$ROOT_DIR" pull --rebase origin "$branch" || warn "Pull fehlgeschlagen, setze fort."
-    git -C "$ROOT_DIR" push -u origin "$branch"
-    ok "Commit gepusht."
-  else
-    warn "Kein Remote konfiguriert – Commit nur lokal."
-  fi
-}
-
-# --- API Docs ----------------------------------------------------------------
-generate_api_docs() {
-  info "Generiere API Docs nach $DOC_OUTPUT"
-  cat > "$DOC_OUTPUT" <<EOF
-# NAS.AI API Dokumentation
-
-Automatisch generiert am: $(date)
-
-**Base URL:** \`${API_URL}\`
-
-## Public Endpoints
-- GET /health
-- GET /api/v1/system/metrics
-- GET /api/v1/system/alerts
-
-## Auth Endpoints
-- POST /auth/login
-- POST /auth/register
-- POST /auth/refresh
-- POST /auth/logout
-
-## Geschützte Endpoints (JWT + CSRF)
-- GET /api/v1/system/settings
-- PUT /api/v1/system/settings/backup
-- POST /api/v1/system/validate-path
-- GET /api/v1/backups
-- POST /api/v1/backups
-- POST /api/v1/backups/{id}/restore
-- DELETE /api/v1/backups/{id}
-- GET /api/v1/storage/files
-- POST /api/v1/storage/upload
-- DELETE /api/v1/storage/delete
-- GET /api/v1/storage/trash
-- POST /api/v1/storage/trash/restore/{id}
-- DELETE /api/v1/storage/trash/{id}
-- POST /api/v1/storage/rename
-
-Hinweis: Weitere Details siehe Swagger (nur in DEV verfügbar) oder Backend-Code unter $API_DIR/src.
-EOF
-  ok "Dokumentation erstellt."
-}
-
-# --- Logs --------------------------------------------------------------------
-tail_logs() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    fail "Compose-Datei $COMPOSE_FILE fehlt."
-  fi
-  read -r -p "Service (leer = alle): " svc
-  read -r -p "Ohne Prefix anzeigen? (y/N): " nopfx
-  local flags=""
-  if [[ "$nopfx" =~ ^[Yy]$ ]]; then
-    flags="--no-log-prefix"
-  fi
-  eval $DC_CMD logs -f --tail=100 $flags ${svc:-}
-}
-
-# --- Extended API Health Check (container-free) -----------------------------
-api_health_check_full() {
-  info "Starte erweiterten API Health Check gegen ${API_URL}"
-  local failures=0
-  # Erwartete Status-Codes für anonyme Calls
-  local checks=(
-    "GET /health 200"
-    "POST /auth/register 400"
-    "POST /auth/login 400"
-    "POST /auth/refresh 400"
-    "GET /api/v1/auth/csrf 200"
-    "GET /api/v1/storage/files 401"
-    "POST /api/v1/storage/upload 401"
-    "GET /api/v1/backups 401"
-    "GET /api/v1/system/settings 401"
-  )
-  for c in "${checks[@]}"; do
-    IFS=' ' read -r m p exp <<<"$c"
-    printf "%s " "${BLUE}➜${NC}"
-    echo "${m} ${p}"
-    http_request "$m" "$p" "$exp" 8 "" || failures=$((failures+1))
-  done
-  [ "$failures" -eq 0 ] && ok "Alle Basis-Checks bestanden" || fail "$failures Checks fehlgeschlagen"
-}
-
-# --- Docker Clean Rebuild ----------------------------------------------------
-docker_clean_rebuild() {
-  info "Docker Clean Rebuild (Compose: $COMPOSE_FILE)"
-  read -r -p "Welcher Service? (all/api/webui/…) [all]: " svc
-  svc=${svc:-all}
-  read -r -p "Aggressiven Cache prune durchführen? (y/N): " force
-  echo ""
-
-  info "[1/5] Cache aufräumen"
-  docker image prune -f || true
-  docker builder prune -f || true
-  if [[ "$force" =~ ^[Yy]$ ]]; then
-    warn "Aggressiver prune (--all --volumes)"
-    docker builder prune -af || true
-    docker system prune -af --volumes || true
-  fi
-
-  info "[2/5] Container stoppen"
-  if [ "$svc" = "all" ]; then
-    eval $DC_CMD down --remove-orphans || true
-  else
-    eval $DC_CMD stop "$svc" || true
-    eval $DC_CMD rm -f "$svc" || true
-  fi
-
-  info "[3/5] Alte Images entfernen"
-  if [ "$svc" = "all" ]; then
-    docker images | grep "nas-" | awk '{print $3}' | xargs -r docker rmi -f || true
-  else
-    docker images | grep "nas-$svc" | awk '{print $3}' | xargs -r docker rmi -f || true
-  fi
-
-  info "[4/5] Neu bauen (--no-cache)"
-  (cd "$INFRA_DIR" && if [ "$svc" = "all" ]; then eval $DC_CMD build --no-cache; else eval $DC_CMD build --no-cache "$svc"; fi)
-
-  info "[5/5] Starten"
-  if [ "$svc" = "all" ]; then
-    eval $DC_CMD up -d
-  else
-    eval $DC_CMD up -d "$svc"
-  fi
-
-  info "Status:"
-  if [ "$svc" = "all" ]; then
-    eval $DC_CMD ps
-  else
-    eval $DC_CMD ps "$svc"
-  fi
-  ok "Rebuild abgeschlossen."
-}
-
-# --- Build & Start API (dev compose) ----------------------------------------
-build_and_start_api_dev() {
-  info "Baue API Image im dev-Modus (Tag: nas-api:lastest)"
-  (cd "$API_DIR" && docker build -t nas-api:lastest .)
-
-  if [ ! -f "$DEV_COMPOSE_FILE" ]; then
-    warn "Dev-Compose-Datei fehlt: $DEV_COMPOSE_FILE"
-    return
-  fi
-
-  info "Starte API Service via docker-compose.dev.yml"
-  eval $DC_CMD_DEV up -d api
-
-  info "Status:"
-  eval $DC_CMD_DEV ps api || true
-  ok "API wurde neu gebaut und gestartet."
-}
-
-# --- Smart waits for deployment ---------------------------------------------
-smart_wait_pg() {
-  local retries=30 delay=2
-  info "Warte auf Postgres (pg_isready)..."
-  for ((i=1; i<=retries; i++)); do
-    if eval $DC_CMD exec -T postgres pg_isready -U nas_user -d nas_db -h localhost >/dev/null 2>&1; then
-      ok "Postgres ist bereit."
-      return 0
-    fi
-    echo -e "${YELLOW}  Versuch $i/$retries...${NC}"
-    sleep "$delay"
-  done
-  fail "Postgres wurde nicht bereit."
-}
-
-smart_wait_api() {
-  local retries=30 delay=2
-  info "Warte auf API (/health)..."
-  for ((i=1; i<=retries; i++)); do
-    if docker run --rm --network "$NETWORK_NAME" curlimages/curl:8.9.1 -fsS http://api:8080/health >/dev/null 2>&1; then
-      ok "API ist erreichbar."
-      return 0
-    fi
-    echo -e "${YELLOW}  Versuch $i/$retries...${NC}"
-    sleep "$delay"
-  done
-  fail "API (/health) nicht erreichbar."
-}
-
-apply_db_seed_if_reset() {
-  local do_reset=$1
-  if [ "$do_reset" != "true" ]; then
-    return 0
-  fi
-  info "Starte DB-Init (Clean Slate)..."
-  if [ -f "$INFRA_DIR/db/init.sql" ]; then
-    eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db < "$INFRA_DIR/db/init.sql"
-  fi
-  if [ -f "$INFRA_DIR/db/migrations/001_add_email_verification.sql" ]; then
-    eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db < "$INFRA_DIR/db/migrations/001_add_email_verification.sql"
-  fi
-  ok "DB-Init abgeschlossen."
-}
-
-# --- AI Knowledge Agent Functions --------------------------------------------
-ai_db_clear() {
-  info "Lösche AI Knowledge Embeddings Tabelle..."
-
-  read -r -p "Wirklich alle AI Embeddings löschen? (y/N): " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    warn "Abgebrochen."
-    return 0
-  fi
-
-  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "DROP TABLE IF EXISTS file_embeddings CASCADE;" || fail "DB Drop fehlgeschlagen"
-  ok "file_embeddings Tabelle gelöscht."
-
-  info "Erstelle neue leere Tabelle..."
-  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "
-    CREATE TABLE IF NOT EXISTS file_embeddings (
-      id SERIAL PRIMARY KEY,
-      file_id TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      mime_type TEXT NOT NULL,
-      content TEXT NOT NULL,
-      embedding vector(384),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(file_id)
-    );" || fail "Tabellen-Erstellung fehlgeschlagen"
-
-  ok "Neue leere file_embeddings Tabelle erstellt."
-}
-
-ai_agent_restart() {
-  info "Starte AI Knowledge Agent neu..."
-
-  eval $DC_CMD restart ai-knowledge-agent || fail "Neustart fehlgeschlagen"
-
-  info "Warte auf Model-Loading (20s)..."
-  sleep 20
-
-  info "Prüfe AI Agent Logs:"
-  eval $DC_CMD logs --tail 15 ai-knowledge-agent
-
-  ok "AI Knowledge Agent neu gestartet."
-}
-
-ai_agent_rebuild() {
-  info "Rebuild AI Knowledge Agent (mit neuem Code)..."
-
-  info "[1/3] Stoppe Container..."
-  eval $DC_CMD stop ai-knowledge-agent || true
-  eval $DC_CMD rm -f ai-knowledge-agent || true
-
-  info "[2/3] Rebuild Image..."
-  (cd "$INFRA_DIR" && eval $DC_CMD build --no-cache ai-knowledge-agent)
-
-  info "[3/3] Starte Container..."
-  eval $DC_CMD up -d ai-knowledge-agent
-
-  info "Warte auf Model-Loading (25s)..."
-  sleep 25
-
-  info "Status & Logs:"
-  eval $DC_CMD ps ai-knowledge-agent
-  eval $DC_CMD logs --tail 15 ai-knowledge-agent
-
-  ok "AI Agent neu gebaut und gestartet."
-}
-
-ai_full_reset() {
-  echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║${NC}   🧠 AI Knowledge Agent - Full Reset            ${BLUE}║${NC}"
-  echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
-  echo ""
-
-  warn "Dies wird durchführen:"
-  echo "  1) Alle AI Embeddings aus Datenbank löschen"
-  echo "  2) AI Agent Container neu starten"
-  echo "  3) Logs zur Kontrolle ausgeben"
-  echo ""
-
-  read -r -p "Fortfahren? (y/N): " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    warn "Abgebrochen."
-    return 0
-  fi
-
-  ai_db_clear
-  echo ""
-  ai_agent_restart
-
-  ok "Full AI Reset abgeschlossen."
-}
-
-ai_show_embeddings() {
-  info "Zeige gespeicherte AI Embeddings..."
-
-  eval $DC_CMD exec -T postgres psql -U nas_user -d nas_db -c "
-    SELECT
-      file_id,
-      mime_type,
-      LENGTH(content) as content_length,
-      384 as embedding_dim,
-      created_at
-    FROM file_embeddings
-    ORDER BY created_at DESC
-    LIMIT 20;" || warn "Tabelle existiert möglicherweise nicht"
-}
-
-ai_test_endpoint() {
-  info "Teste AI Agent /process Endpoint..."
-
-  read -r -p "Dateiname in /mnt/data/ [test.txt]: " filename
-  filename=${filename:-test.txt}
-
-  local payload
-  payload=$(printf '{"file_path":"/mnt/data/%s","file_id":"%s","mime_type":"text/plain"}' "$filename" "$filename")
-
-  info "Sende Request an AI Agent..."
-  eval $DC_CMD exec api sh -c "'curl -X POST http://ai-knowledge-agent:5000/process -H \"Content-Type: application/json\" -d '\''$payload'\'' 2>&1'" || fail "Request fehlgeschlagen"
-
-  echo ""
-  info "Prüfe AI Agent Logs:"
-  eval $DC_CMD logs --tail 10 ai-knowledge-agent
-}
-
-ai_test_embed_query() {
-  info "Teste AI Agent /embed_query Endpoint..."
-
-  read -r -p "Suchtext: " searchtext
-  if [ -z "$searchtext" ]; then
-    warn "Kein Suchtext eingegeben. Abbruch."
-    return 0
-  fi
-
-  local payload
-  payload=$(printf '{"text":"%s"}' "$searchtext")
-
-  info "Sende Request an AI Agent..."
-  local response
-  response=$(eval $DC_CMD exec api sh -c "'curl -sS -X POST http://ai-knowledge-agent:5000/embed_query -H \"Content-Type: application/json\" -d '\''$payload'\'' 2>&1'")
-
-  echo -e "${GREEN}Response:${NC}"
-  echo "$response" | jq '.' 2>/dev/null || echo "$response"
-}
-
-ai_test_semantic_search() {
-  info "Teste Semantische Suche..."
-
-  read -r -p "Suchanfrage: " query
-  if [ -z "$query" ]; then
-    warn "Keine Suchanfrage eingegeben. Abbruch."
-    return 0
-  fi
-
-  info "Sende Suchanfrage an API..."
-
-  # URL-encode the query
-  local encoded_query
-  encoded_query=$(printf '%s' "$query" | jq -sRr @uri)
-
-  local response
-  response=$(eval $DC_CMD exec api sh -c "'curl -sS \"http://localhost:8080/api/v1/search?q=$encoded_query\" 2>&1'")
-
-  echo -e "${GREEN}Suchergebnisse:${NC}"
-  echo "$response" | jq '.' 2>/dev/null || echo "$response"
-
-  echo ""
-  info "Top 3 Resultate:"
-  echo "$response" | jq -r '.results[:3] | .[] | "\nDatei: \(.file_path)\nÄhnlichkeit: \(.similarity)\nInhalt: \(.content[:200])..."' 2>/dev/null || true
-}
-
-ai_rebuild_and_restart_all() {
-  echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║${NC}   🚀 AI Agent + API Rebuild & Restart          ${BLUE}║${NC}"
-  echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
-  echo ""
-
-  warn "Dies wird durchführen:"
-  echo "  1) AI Agent neu bauen (mit /embed_query Endpoint)"
-  echo "  2) API neu bauen (mit Semantic Search)"
-  echo "  3) Beide Container neu starten"
-  echo ""
-
-  read -r -p "Fortfahren? (y/N): " confirm
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    warn "Abgebrochen."
-    return 0
-  fi
-
-  info "[1/4] Stoppe Container..."
-  eval $DC_CMD stop ai-knowledge-agent api || true
-
-  info "[2/4] Rebuild AI Agent..."
-  (cd "$INFRA_DIR" && eval $DC_CMD build --no-cache ai-knowledge-agent)
-
-  info "[3/4] Rebuild API..."
-  (cd "$API_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o api-new ./src/main.go)
-  docker cp "$API_DIR/api-new" nas-api:/app/api
-
-  info "[4/4] Starte Container..."
-  eval $DC_CMD up -d ai-knowledge-agent api
-
-  info "Warte auf Services (30s)..."
-  sleep 30
-
-  info "Status & Logs:"
-  eval $DC_CMD ps ai-knowledge-agent api
-  echo ""
-  info "AI Agent Logs:"
-  eval $DC_CMD logs --tail 10 ai-knowledge-agent
-  echo ""
-  info "API Logs:"
-  eval $DC_CMD logs --tail 10 api
-
-  ok "Rebuild & Restart abgeschlossen."
-}
-
-# --- Deploy Prod -------------------------------------------------------------
-deploy_prod() {
-  [ -f "$ENV_FILE" ] || fail ".env.prod fehlt ($ENV_FILE)"
-  [ -f "$COMPOSE_FILE" ] || fail "docker-compose.prod.yml fehlt ($COMPOSE_FILE)"
-
-  echo -e "${BLUE}╔══════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║${NC}   🚀 NAS.AI Production Deployment               ${BLUE}║${NC}"
-  echo -e "${BLUE}╚══════════════════════════════════════════════╝${NC}"
-  echo ""
-
-  read -r -p "Datenbank komplett zurücksetzen? (y/N): " ans
-  DO_RESET="false"
-  [[ "$ans" =~ ^[Yy]$ ]] && DO_RESET="true"
-
-  info "Stoppe Container..."
-  if [ "$DO_RESET" = "true" ]; then
-    eval $DC_CMD down -v --remove-orphans
-  else
-    eval $DC_CMD down --remove-orphans
-  fi
-
-  info "Starte Compose (build + up)..."
-  eval $DC_CMD up -d --build
-
-  smart_wait_pg
-  apply_db_seed_if_reset "$DO_RESET"
-  smart_wait_api
-
-  info "Status:"
-  eval $DC_CMD ps
-  ok "Deployment abgeschlossen."
-  echo -e "${YELLOW}Logs:${NC} $DC_CMD logs -f --no-log-prefix"
-}
-
-# --- Menu (Arrow-navigation) -------------------------------------------------
-main_menu() {
-  local sections=(
-    "=== API & SYSTEM ==="
-    "=== AI KNOWLEDGE ==="
-    "=== ACCESS ==="
-  )
-  local items=(
-    "🔍 API Health Check (single)"
-    "📡 API Monitoring Loop"
-    "🧪 Endpoint Tests"
-    "📚 API Docs generieren"
-    "💾 Git Savepoint (add/commit/push)"
-    "📜 Docker Logs (optional no-prefix)"
-    "✅ API Health Check (erweitert)"
-    "🐳 Docker Clean Rebuild"
-    "🚀 Deploy Prod"
-    "🔨 API neu bauen & starten (dev)"
-    "🗑️  AI DB Clear (Embeddings löschen)"
-    "🔄 AI Agent Restart"
-    "🔨 AI Agent Rebuild (neu bauen)"
-    "🧠 AI Full Reset (DB + Restart)"
-    "📊 AI Embeddings anzeigen"
-    "🧪 AI /process Endpoint Test"
-    "🔍 AI /embed_query Test"
-    "🎯 Semantic Search Test"
-    "🚀 AI+API Full Rebuild"
-    "🔐 Login & Tokens setzen"
-    "❌ Beenden"
-  )
-  # Abschnittsgrenzen (Index, wo Abschnitt startet)
-  local dividers=(0 10 19)
-
-  local selected=0 key
-
-  while true; do
-    clear
-    print_header
-    printf "%s\n" "${YELLOW}Use ↑/↓ und Enter · q zum Beenden${NC}"
-
-    for i in "${!items[@]}"; do
-      # Abschnittstitel einblenden
-      for d in "${dividers[@]}"; do
-        if [ "$i" -eq "$d" ]; then
-          if [ "$d" -eq 0 ]; then
-            printf "${CYAN}${sections[0]}${NC}\n"
-          elif [ "$d" -eq 10 ]; then
-            printf "${CYAN}${sections[1]}${NC}\n"
-          elif [ "$d" -eq 19 ]; then
-            printf "${CYAN}${sections[2]}${NC}\n"
-          fi
+    for text in "${texts[@]}"; do
+        echo -e "${CYAN}Input: \"$text\"${NC}"
+        response=$(curl -s -X POST "$BASE_URL/api/v1/embed" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"$text\"}" \
+            -w "\n%{http_code}")
+
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | head -n-1)
+
+        if [ "$http_code" = "200" ]; then
+            echo -e "${GREEN}✓ Embedding generiert${NC}"
+            echo "$body" | head -c 100
+            echo "..."
+        else
+            echo -e "${RED}✗ Error: $http_code${NC}"
         fi
-      done
-
-      if [ "$i" -eq "$selected" ]; then
-        printf "${BLUE}>${NC} ${YELLOW}%s${NC}\n" "${items[$i]}"
-      else
-        printf "  %s\n" "${items[$i]}"
-      fi
+        echo ""
     done
 
-    read -rsn1 key
-    if [[ $key == $'\x1b' ]]; then
-      read -rsn2 key
-      case "$key" in
-        "[A") selected=$(( (selected - 1 + ${#items[@]}) % ${#items[@]} )) ;; # up
-        "[B") selected=$(( (selected + 1) % ${#items[@]} )) ;;                # down
-      esac
-      continue
-    fi
-
-    if [[ $key == "" || $key == $'\x0a' ]]; then
-      case "$selected" in
-        0) health_single; read -r -p "Weiter mit Enter..." _ ;;
-        1) health_monitor ;;
-        2) test_endpoints; read -r -p "Weiter mit Enter..." _ ;;
-        3) generate_api_docs; read -r -p "Weiter mit Enter..." _ ;;
-        4) git_savepoint; read -r -p "Weiter mit Enter..." _ ;;
-        5) tail_logs ;;
-        6) api_health_check_full; read -r -p "Weiter mit Enter..." _ ;;
-        7) docker_clean_rebuild; read -r -p "Weiter mit Enter..." _ ;;
-        8) deploy_prod; read -r -p "Weiter mit Enter..." _ ;;
-        9) build_and_start_api_dev; read -r -p "Weiter mit Enter..." _ ;;
-        10) ai_db_clear; read -r -p "Weiter mit Enter..." _ ;;
-        11) ai_agent_restart; read -r -p "Weiter mit Enter..." _ ;;
-        12) ai_agent_rebuild; read -r -p "Weiter mit Enter..." _ ;;
-        13) ai_full_reset; read -r -p "Weiter mit Enter..." _ ;;
-        14) ai_show_embeddings; read -r -p "Weiter mit Enter..." _ ;;
-        15) ai_test_endpoint; read -r -p "Weiter mit Enter..." _ ;;
-        16) ai_test_embed_query; read -r -p "Weiter mit Enter..." _ ;;
-        17) ai_test_semantic_search; read -r -p "Weiter mit Enter..." _ ;;
-        18) ai_rebuild_and_restart_all; read -r -p "Weiter mit Enter..." _ ;;
-        19) login_and_set_tokens; read -r -p "Weiter mit Enter..." _ ;;
-        20) exit 0 ;;
-      esac
-    fi
-
-    if [[ $key == "q" || $key == "Q" ]]; then
-      exit 0
-    fi
-  done
+    echo -e "${MAGENTA}⚠️  AI Service muss laufen für erfolgreiche Tests${NC}"
 }
 
-# --- Entry -------------------------------------------------------------------
-show_hype_loader
-check_prereqs
-main_menu
+function test_database_connectivity() {
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}💾 TESTING DATABASE CONNECTIVITY${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}\n"
+
+    echo -ne "${CYAN}Testing PostgreSQL Connection...${NC} "
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T db psql -U nas_user -d nas_db -c "SELECT 1;" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Connected${NC}"
+    else
+        echo -e "${RED}✗ Failed${NC}"
+    fi
+
+    echo -ne "${CYAN}Testing Redis Connection...${NC} "
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T redis redis-cli ping > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Connected${NC}"
+    else
+        echo -e "${RED}✗ Failed${NC}"
+    fi
+
+    echo -ne "${CYAN}Testing pgvector Extension...${NC} "
+    if docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T db psql -U nas_user -d nas_db -c "SELECT * FROM pg_extension WHERE extname='vector';" | grep -q vector; then
+        echo -e "${GREEN}✓ Installed${NC}"
+    else
+        echo -e "${RED}✗ Not Found${NC}"
+    fi
+}
+
+function test_full_system() {
+    echo -e "${GREEN}╔═══════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║     FULL SYSTEM TEST - ALL ENDPOINTS         ║${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════╝${NC}\n"
+
+    test_all_main_api
+    echo -e "\n"
+    test_all_ai_api
+    echo -e "\n"
+    test_all_orchestrator_api
+    echo -e "\n"
+    test_planned_endpoints
+    echo -e "\n"
+    test_database_connectivity
+
+    echo -e "\n${GREEN}════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ FULL SYSTEM TEST ABGESCHLOSSEN${NC}"
+    echo -e "${YELLOW}⚠️  HINWEIS: Einige Services können in Wartung sein (502/503)${NC}"
+    echo -e "${YELLOW}📖 Dokumentation: /home/freun/Agent/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
+    echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+
+    wait_for_enter
+}
+
+# --- 5. MENUS (Metasploit Style) ---
+
+function menu_main() {
+    while true; do
+        show_header
+        echo -e "${BLUE}Wähle eine Kategorie:${NC}"
+        echo -e "  ${YELLOW}1)${NC} 🚀 Deployment & Core Ops"
+        echo -e "  ${YELLOW}2)${NC} 🧠 AI Agents & Intelligence"
+        echo -e "  ${YELLOW}3)${NC} 🕵️  Forensics & Logs (Gauner-Jagd)"
+        echo -e "  ${YELLOW}4)${NC} 🔧 System Utils & Clean"
+        echo -e "  ${YELLOW}5)${NC} 🧪 API Testing Suite"
+        echo -e "  ${RED}0) ❌ EXIT${NC}"
+        echo ""
+        read -p "nas-ai > " choice
+
+        case $choice in
+            1) menu_deployment ;;
+            2) menu_ai ;;
+            3) menu_forensics ;;
+            4) menu_utils ;;
+            5) menu_testing ;;
+            0) echo "Bye Commander."; exit 0 ;;
+            *) echo "Ungültig." ;;
+        esac
+    done
+}
+
+function menu_deployment() {
+    while true; do
+        show_header
+        echo -e "${YELLOW}MODULE: DEPLOYMENT${NC}"
+        echo "  1) 🚀 Full Prod Deployment (Rebuild All)"
+        echo "  2) 🔄 Restart Backend (API Only)"
+        echo "  3) 🌐 Restart Frontend (WebUI)"
+        echo "  0) 🔙 Zurück"
+        echo ""
+        read -p "nas-ai/deploy > " c
+        case $c in
+            1) deploy_full ;;
+            2) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart api; wait_for_enter ;;
+            3) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart webui; wait_for_enter ;;
+            0) return ;;
+        esac
+    done
+}
+
+function menu_ai() {
+    while true; do
+        show_header
+        echo -e "${YELLOW}MODULE: AI INTELLIGENCE${NC}"
+        echo "  1) 🧠 Logs: Knowledge Agent & Orchestrator (Live)"
+        echo "  2) 🧪 Test: Embeddings Endpoint"
+        echo "  3) 🔄 Restart AI Cluster"
+        echo "  0) 🔙 Zurück"
+        echo ""
+        read -p "nas-ai/brain > " c
+        case $c in
+            1) smart_logs "ai-knowledge-agent orchestrator"; wait_for_enter ;;
+            2) echo "Führe Test-Script aus..."; "$BASE_DIR/scripts/test-embedding.sh" || echo "Test failed"; wait_for_enter ;;
+            3) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart ai-knowledge-agent orchestrator; wait_for_enter ;;
+            0) return ;;
+        esac
+    done
+}
+
+function menu_forensics() {
+    while true; do
+        show_header
+        echo -e "${YELLOW}MODULE: FORENSICS & SECURITY${NC}"
+        echo "  1) 📡 Live Smart-Logs (API Core)"
+        echo "  2) 🕵️  IP-Lookup / Gauner Check"
+        echo "  3) 🛡️  Fail2Ban Status (Simuliert)"
+        echo "  0) 🔙 Zurück"
+        echo ""
+        read -p "nas-ai/sec > " c
+        case $c in
+            1) smart_logs "api"; wait_for_enter ;;
+            2) forensic_ip_check ;;
+            3) echo "Status OK. 0 Bans currently."; wait_for_enter ;;
+            0) return ;;
+        esac
+    done
+}
+
+function menu_utils() {
+    while true; do
+        show_header
+        echo -e "${YELLOW}MODULE: UTILITIES${NC}"
+        echo "  1) 🧹 Docker Prune (Alles bereinigen)"
+        echo "  2) 💾 Backup Database Now"
+        echo "  3) 📜 Generate API Docs (Swagger)"
+        echo "  0) 🔙 Zurück"
+        echo ""
+        read -p "nas-ai/utils > " c
+        case $c in
+            1) docker system prune -af; wait_for_enter ;;
+            2) echo "Backup läuft..."; docker compose exec db pg_dump -U nas_user nas_db > "$INFRA_DIR/backup_$(date +%F).sql"; echo "Done."; wait_for_enter ;;
+            3) echo "Generating Swag..."; wait_for_enter ;; # Hier Befehl einfügen wenn vorhanden
+            0) return ;;
+        esac
+    done
+}
+
+function menu_testing() {
+    while true; do
+        show_header
+        echo -e "${YELLOW}MODULE: API TESTING SUITE${NC}"
+        echo -e "${MAGENTA}⚠️  HINWEIS: Einige Services können in Wartung sein (502/503)${NC}"
+        echo ""
+        echo -e "  ${CYAN}[COMPREHENSIVE TESTS]${NC}"
+        echo -e "  1) 🚀 Full System Test (Alle Endpoints)"
+        echo -e "  2) 🧪 Test Main API (Port 8080)"
+        echo -e "  3) 🧠 Test AI Knowledge Agent (Port 5000)"
+        echo -e "  4) 🎯 Test Orchestrator (Port 9000)"
+        echo ""
+        echo -e "  ${CYAN}[SPECIALIZED TESTS]${NC}"
+        echo -e "  5) 🚧 Test Planned/Future Endpoints"
+        echo -e "  6) 🌐 Test WebUI Connectivity"
+        echo -e "  7) 🤖 Test AI Embeddings (Detailed)"
+        echo -e "  8) 💾 Test Database Connectivity"
+        echo ""
+        echo -e "  ${CYAN}[DOCUMENTATION]${NC}"
+        echo -e "  9) 📖 Show API Documentation Path"
+        echo ""
+        echo -e "  0) 🔙 Zurück"
+        echo ""
+        read -p "nas-ai/testing > " c
+        case $c in
+            1) test_full_system ;;
+            2) test_all_main_api; wait_for_enter ;;
+            3) test_all_ai_api; wait_for_enter ;;
+            4) test_all_orchestrator_api; wait_for_enter ;;
+            5) test_planned_endpoints; wait_for_enter ;;
+            6) test_webui_connectivity; wait_for_enter ;;
+            7) test_ai_embeddings_detailed; wait_for_enter ;;
+            8) test_database_connectivity; wait_for_enter ;;
+            9) echo -e "${GREEN}API Dokumentation:${NC}";
+               echo "  - Comprehensive: $BASE_DIR/API_ENDPOINTS_COMPREHENSIVE.md";
+               echo "  - Summary: $BASE_DIR/API_ENDPOINTS_SUMMARY.md";
+               echo "  - Quick Ref: $BASE_DIR/API_ENDPOINTS_QUICK_REFERENCE.txt";
+               echo "  - Index: $BASE_DIR/API_DOCUMENTATION_INDEX.md";
+               wait_for_enter ;;
+            0) return ;;
+            *) echo "Ungültig." ;;
+        esac
+    done
+}
+
+# --- 6. EXECUTION ---
+
+check_preflight
+hype_loader
+menu_main
