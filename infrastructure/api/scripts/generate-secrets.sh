@@ -28,7 +28,10 @@ CSRF_SECRET=$(openssl rand -base64 32 | tr -d '\n')
 echo -e "  ${GREEN}✓${NC} Generated (43 characters)\n"
 
 # Create .env file
-ENV_FILE="/home/user/Agent/infrastructure/api/.env"
+# Auto-detect base path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="$API_DIR/.env"
 
 echo -e "${BLUE}Creating .env file...${NC}"
 
@@ -96,7 +99,7 @@ echo -e "export CSRF_SECRET='${CSRF_SECRET}'"
 echo ""
 
 # Create export script
-EXPORT_FILE="/home/user/Agent/infrastructure/api/scripts/export-env.sh"
+EXPORT_FILE="$SCRIPT_DIR/export-env.sh"
 cat > "$EXPORT_FILE" <<EOF
 #!/bin/bash
 # Export environment variables from .env file
@@ -119,7 +122,7 @@ chmod +x "$EXPORT_FILE"
 echo -e "${GREEN}✓ Created export script: $EXPORT_FILE${NC}\n"
 
 # Update .gitignore
-GITIGNORE="/home/user/Agent/infrastructure/api/.gitignore"
+GITIGNORE="$API_DIR/.gitignore"
 if [ -f "$GITIGNORE" ]; then
     if ! grep -q "^\.env$" "$GITIGNORE"; then
         echo ".env" >> "$GITIGNORE"
@@ -152,7 +155,7 @@ echo ""
 
 echo -e "${BLUE}Option 4: Load in systemd service${NC}"
 echo -e "  Edit /etc/systemd/system/nas-api.service"
-echo -e "  Add: EnvironmentFile=/home/user/Agent/infrastructure/api/.env"
+echo -e "  Add: EnvironmentFile=$ENV_FILE"
 echo ""
 
 echo -e "${GREEN}=== Security Reminders ===${NC}\n"
