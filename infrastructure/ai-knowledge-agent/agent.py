@@ -100,7 +100,10 @@ def health_check():
     if model_loaded and model is not None:
         with model_lock:
             if model is not None: # Double check after lock
-                embedding_dim = len(model.encode("test"))
+                try:
+                    embedding_dim = len(model.encode("test"))
+                except Exception:
+                    embedding_dim = None
 
     status = {
         "status": "healthy" if (model_loaded and db_connected) else "unhealthy",

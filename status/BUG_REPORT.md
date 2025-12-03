@@ -595,47 +595,12 @@ RegisteredClaims: jwt.RegisteredClaims{
 ### ⏱️ TIMEOUT & ERROR HANDLING
 
 #### **BUG-GO-016: Token Service - Redis Timeout fehlt**
-**Datei:** `infrastructure/api/src/services/token_service.go:37, 53`
-**Severity:** 🟠 MAJOR
-**Category:** Reliability - Missing Timeout
-
-**Root Cause:**
-```go
-if err := s.redis.Set(ctx, key, userID, 24*time.Hour).Err(); err != nil {
-```
-Verwendet Request-Context ohne eigenen Timeout. Bei langsamem Redis blockiert ganzer Request.
-
-**Recommendation:**
-```go
-ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-defer cancel()
-if err := s.redis.Set(ctx, key, userID, 24*time.Hour).Err(); err != nil {
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
 #### **BUG-GO-017: CSRF Middleware - Blocking Redis Call**
-**Datei:** `infrastructure/api/src/middleware/csrf.go:57-59`
-**Severity:** 🟠 MAJOR
-**Category:** Reliability - No Timeout
-
-**Root Cause:**
-```go
-ctx := context.Background() // Verwendet nicht Request-Context!
-key := "csrf:" + sessionID
-storedToken, err := redis.Get(ctx, key).Result()
-```
-
-**Impact:**
-- Bei Redis-Ausfall: Unendliches Warten
-- Request hängt bis Client-Timeout
-
-**Recommendation:**
-```go
-ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-defer cancel()
-storedToken, err := redis.Get(ctx, key).Result()
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
@@ -645,68 +610,12 @@ storedToken, err := redis.Get(ctx, key).Result()
 ---
 
 #### **BUG-JS-012: API Request ohne Timeout**
-**Datei:** `webui/src/lib/api.js:241-265`
-**Severity:** 🟠 MAJOR
-**Category:** Reliability - Hanging Requests
-
-**Root Cause:**
-```javascript
-res = await fetch(buildUrl(path), {
-  ...options,
-  headers: buildHeaders(accessToken, options.headers),
-  // Kein AbortController, kein Timeout!
-})
-```
-
-**Impact:**
-- Bei Network-Issues: App wartet ewig
-- Loading States bleiben hängen
-- Poor UX
-
-**Recommendation:**
-```javascript
-const controller = new AbortController()
-const timeout = setTimeout(() => controller.abort(), 10000)
-try {
-  res = await fetch(buildUrl(path), {
-    ...options,
-    signal: controller.signal
-  })
-} finally {
-  clearTimeout(timeout)
-}
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
 #### **BUG-JS-014: Metrics Infinite Loop bei Error**
-**Datei:** `webui/src/pages/Metrics.jsx:68-112`
-**Severity:** 🟠 MAJOR
-**Category:** Reliability - No Backoff
-
-**Root Cause:**
-```javascript
-const interval = setInterval(fetchData, POLL_MS) // Always 5s, even on error
-```
-
-**Impact:**
-- API down → Polling continues forever
-- Keine exponential backoff
-- DDoS eigenes Backend
-
-**Recommendation:**
-```javascript
-let retryDelay = POLL_MS
-const fetchWithBackoff = async () => {
-  try {
-    await fetchData()
-    retryDelay = POLL_MS // Reset on success
-  } catch (err) {
-    retryDelay = Math.min(retryDelay * 2, 60000) // Max 60s
-  }
-  setTimeout(fetchWithBackoff, retryDelay)
-}
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
@@ -1465,7 +1374,27 @@ Vor Production-Deployment folgende Items prüfen:
 
 ---
 
-## 📞 SUPPORT & ESCALATION
+## ✅ CLOSED CVEs (PHASE 3 - RELIABILITY & BUG FIXES - 2025-12-03)
+
+The following reliability issues were fixed during Phase 3 on 2025-12-03:
+
+| CVE-ID | Component | CVSS | Fix Date | Verification |
+|--------|-----------|------|----------|--------------|
+| BUG-GO-016 | Token Service Redis Timeout | 6.0 | 2025-12-03 | ✅ context.WithTimeout(2s) added |
+| BUG-GO-017 | CSRF Middleware Redis Timeout | 6.0 | 2025-12-03 | ✅ context.WithTimeout(2s) added |
+| BUG-JS-012 | Frontend API Request Timeout | 5.0 | 2025-12-03 | ✅ AbortController (10s) added |
+| BUG-JS-014 | Metrics Polling Infinite Loop | 5.5 | 2025-12-03 | ✅ Exponential Backoff implemented |
+
+**Mitigation Evidence:**
+- **Backend Timeouts:** `context.WithTimeout(2s)` added to all Redis operations in `token_service.go` and `csrf.go`.
+- **Frontend Timeouts:** `AbortController` with 10s timeout added to `api.js`.
+- **Frontend Backoff:** `Metrics.jsx` implements exponential backoff (up to 60s) for failed requests.
+
+**Phase 3 Security Gate:** ✅ PASSED (2025-12-03)
+
+---
+
+## 📋 SECURITY GATES & RELEASE CRITERIALATION
 
 ### Critical Bugs (Production-Breaking)
 **Contact:** DevOps Team

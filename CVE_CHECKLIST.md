@@ -22,8 +22,8 @@ Diese Checkliste dient als zentrale Übersicht aller identifizierten Schwachstel
 | 🟡 OPEN (Medium/Low) | 2 | CVSS < 4.0 - Tracked |
 | ✅ CLOSED | 31 | Phase 1: 11 | Phase 1.5: 8 | Phase 2: 7 | Phase 2.5: 1 | Phase 2.6: 4 |
 
-**Last Security Gate:** Phase 2.6 Frontend & JWT Security (2025-12-02) ✅ PASSED
-**Next Security Gate:** Phase 3 - Timeouts & Resilience (Target: 2025-12-05)
+**Last Security Gate:** Phase 3 - Timeouts & Resilience (2025-12-03) ✅ PASSED
+**Next Security Gate:** Phase 4 - Documentation & Cleanup (Target: 2025-12-06)
 **Security Score:** 98/100 (Grade: A+) - OWASP 10/10
 
 ---
@@ -232,6 +232,21 @@ The following bugs were fixed during Frontend Integrity & JWT Security hardening
 
 **Phase 2.6 Security Gate:** ✅ PASSED (2025-12-02)
 **Evidence Location:** `git log --oneline -3` (commits: c2ba918, 3f1f09e)
+
+---
+
+## ✅ CLOSED CVEs (PHASE 3 - RELIABILITY & BUG FIXES - 2025-12-03)
+
+The following reliability issues were fixed during Phase 3 on 2025-12-03:
+
+| CVE-ID | Component | CVSS | Fix Date | Verification |
+|--------|-----------|------|----------|--------------|
+| BUG-GO-016 | Token Service Redis Timeout | 6.0 | 2025-12-03 | ✅ context.WithTimeout(2s) added |
+| BUG-GO-017 | CSRF Middleware Redis Timeout | 6.0 | 2025-12-03 | ✅ context.WithTimeout(2s) added |
+| BUG-JS-012 | Frontend API Request Timeout | 5.0 | 2025-12-03 | ✅ AbortController (10s) added |
+| BUG-JS-014 | Metrics Polling Infinite Loop | 5.5 | 2025-12-03 | ✅ Exponential Backoff implemented |
+
+**Phase 3 Security Gate:** ✅ PASSED (2025-12-03)
 
 ---
 

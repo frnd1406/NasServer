@@ -1,10 +1,11 @@
 import logging
 import os
 import time
+from contextlib import contextmanager
 
 from flask import Flask, jsonify, request
 import psycopg2
-from psycopg2 import OperationalError
+from psycopg2 import pool, OperationalError
 from pgvector.psycopg2 import register_vector
 from sentence_transformers import SentenceTransformer
 
@@ -17,7 +18,16 @@ app = Flask(__name__)
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 model = None
 model_loaded = False
+db_pool = None
 
+# FIX [BUG-PY-006]: Module-level constant for DSN
+DSN = {
+    "host": os.getenv("PGHOST", "postgres"),
+    "port": os.getenv("PGPORT", "5432"),
+    "dbname": os.getenv("PGDATABASE", "nas_db"),
+    "user": os.getenv("PGUSER", "nas_user"),
+    "password": os.getenv("PGPASSWORD", ""),
+}
 
 def load_model():
     global model, model_loaded
@@ -32,30 +42,45 @@ def load_model():
         logger.error("Model load failed: %s", err)
 
 
-def db_connect_with_retry(retries=10, delay=2.0):
-    dsn = {
-        "host": os.getenv("PGHOST", "postgres"),
-        "port": os.getenv("PGPORT", "5432"),
-        "dbname": os.getenv("PGDATABASE", "nas_db"),
-        "user": os.getenv("PGUSER", "nas_user"),
-        "password": os.getenv("PGPASSWORD", ""),
-    }
-    for attempt in range(1, retries + 1):
-        try:
-            conn = psycopg2.connect(**dsn)
-            conn.close()
-            logger.info("Database connection OK (attempt %d).", attempt)
-            return True
-        except OperationalError as err:
-            logger.warning("DB connection failed (attempt %d/%d): %s", attempt, retries, err)
-            time.sleep(delay)
-    return False
+def init_db_pool():
+    global db_pool
+    try:
+        # FIX [BUG-PY-008]: Use connection pool to prevent churn
+        db_pool = psycopg2.pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            **DSN
+        )
+        logger.info("Database connection pool initialized.")
+        return True
+    except Exception as e:
+        logger.error("Failed to initialize DB pool: %s", e)
+        return False
 
+@contextmanager
+def get_db_connection():
+    if not db_pool:
+        raise Exception("Database pool not initialized")
+    
+    conn = db_pool.getconn()
+    try:
+        yield conn
+    finally:
+        db_pool.putconn(conn)
 
 @app.route("/health", methods=["GET"])
 def health():
-    db_ok = db_connect_with_retry(retries=1, delay=0)  # quick check on health requests
-
+    db_ok = False
+    if db_pool:
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                db_ok = True
+        except Exception as e:
+            logger.error("Health check DB failure: %s", e)
+            db_ok = False
+    
     # Return 503 if model is not ready (crash prevention)
     if not model_loaded or model is None:
         return jsonify(
@@ -80,20 +105,12 @@ def health():
 def process_file():
     """
     Process an uploaded file and generate embeddings.
-
-    Expected JSON payload:
-    {
-        "file_path": "/mnt/data/document.txt",
-        "file_id": "document.txt",
-        "mime_type": "text/plain"
-    }
     """
     # Null-pointer prevention: Check both model_loaded AND model is not None
     if not model_loaded or model is None:
         logger.error("Model not loaded yet or is None")
         return jsonify({"error": "Model not loaded"}), 503
 
-    conn = None  # Initialize for try-finally safety
     try:
         # FIX [BUG-PY-014]: Add explicit JSON parse error logging
         try:
@@ -130,22 +147,11 @@ def process_file():
         logger.info("Generating embeddings for %s (%d chars)", file_id, len(content))
         embedding = model.encode(content)
 
-        # Store in database with proper resource management
-        dsn = {
-            "host": os.getenv("PGHOST", "postgres"),
-            "port": os.getenv("PGPORT", "5432"),
-            "dbname": os.getenv("PGDATABASE", "nas_db"),
-            "user": os.getenv("PGUSER", "nas_user"),
-            "password": os.getenv("PGPASSWORD", ""),
-        }
+        # FIX [BUG-PY-002]: Use connection pool context manager to ensure cleanup
+        with get_db_connection() as conn:
+            # CRITICAL FIX: Register pgvector type adapter
+            register_vector(conn)
 
-        # Open connection AFTER embedding generation to minimize leak window
-        conn = psycopg2.connect(**dsn)
-
-        # CRITICAL FIX: Register pgvector type adapter
-        register_vector(conn)
-
-        try:
             with conn.cursor() as cur:
                 # Create table if it doesn't exist
                 cur.execute("""
@@ -176,11 +182,6 @@ def process_file():
 
                 conn.commit()
                 logger.info("Successfully stored embeddings for %s", file_id)
-        finally:
-            # CRITICAL: Always close connection even on error
-            if conn:
-                conn.close()
-                logger.debug("DB connection closed for %s", file_id)
 
         return jsonify({
             "status": "success",
@@ -191,13 +192,6 @@ def process_file():
 
     except Exception as e:
         logger.error("Error processing file: %s", str(e), exc_info=True)
-        # CRITICAL: Close connection in error path too
-        if conn:
-            try:
-                conn.close()
-                logger.debug("DB connection closed after error")
-            except:
-                pass
         return jsonify({"error": str(e)}), 500
 
 
@@ -205,11 +199,6 @@ def process_file():
 def embed_query():
     """
     Generate an embedding for an arbitrary query text.
-
-    Expected JSON payload:
-    {
-        "text": "Meine Suchanfrage"
-    }
     """
     # Null-pointer prevention: Check both model_loaded AND model is not None
     if not model_loaded or model is None:
@@ -233,7 +222,7 @@ def embed_query():
 
 def main():
     load_model()
-    db_connect_with_retry()
+    init_db_pool()
     # FIX [BUG-PY-015]: Explicitly disable Flask debug mode for production safety
     app.run(host="0.0.0.0", port=5000, debug=False)
 

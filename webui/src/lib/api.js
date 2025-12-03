@@ -291,6 +291,10 @@ function extractErrorMessage(res, data) {
 async function performRequest(path, options, tokenOverride) {
   // SECURITY: Get accessToken from in-memory AuthContext (not localStorage)
   const accessToken = tokenOverride || authContextRef?.accessToken || null
+  // FIX [BUG-JS-012]: Add timeout to prevent hanging requests
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+
   let res
   try {
     res = await fetch(buildUrl(path), {
@@ -298,9 +302,15 @@ async function performRequest(path, options, tokenOverride) {
       headers: buildHeaders(accessToken, options.headers),
       // CRITICAL FIX: Send cookies with every request (BUG-JS-002)
       credentials: 'include',
+      signal: controller.signal,
     })
   } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timed out after 10s`)
+    }
     throw new Error(`Cannot reach API at ${API_BASE_URL} (${err.message})`)
+  } finally {
+    clearTimeout(timeoutId)
   }
 
   const isJson = res.headers.get('content-type')?.includes('application/json')
