@@ -9,10 +9,10 @@ FROM python:3.11-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+  gcc \
+  g++ \
+  curl \
+  && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -44,4 +44,4 @@ EXPOSE 8000
 
 # Run the agent
 ENV PYTHONPATH=/app
-CMD ["python", "agent.py"]
+CMD ["python", "-m", "agent"]

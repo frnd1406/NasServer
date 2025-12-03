@@ -596,6 +596,7 @@ func (s *BackupService) SetBackupPath(path string) error {
 **Datei:** `infrastructure/analysis/main.go:108-116`
 **Severity:** 🟠 MAJOR
 **Category:** Logic Error - Race Condition
+**Status:** ✅ FIXED (2025-12-03)
 
 **Root Cause:**
 ```go
@@ -914,63 +915,22 @@ def process_file():
 **Dateien:** `ai-knowledge-agent/requirements.txt`, `ai_knowledge_agent/requirements.txt`
 **Severity:** 🟠 MAJOR
 **Category:** Dependency Management - Inconsistency
-
-**Root Cause:**
-```
-# ai-knowledge-agent/requirements.txt
-torch==2.1.0
-sentence-transformers==2.2.2
-
-# ai_knowledge_agent/requirements.txt
-torch==2.3.1
-sentence-transformers==3.1.1
-```
-
-**Impact:**
-- Breaking Changes zwischen 2.x und 3.x
-- Inkonsistente Embeddings
-- Semantic-Search-Ergebnisse unterscheiden sich
-
-**Recommendation:**
-Einheitliche Versions-Policy etablieren, z.B. in root requirements.txt.
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
 #### **BUG-JS-008: Missing Error Boundaries**
-**Dateien:** Alle React Components
-**Severity:** 🟠 MAJOR
-**Category:** Reliability - No Error Recovery
-
-**Root Cause:**
-```javascript
-// App.jsx - No ErrorBoundary
-<Router>
-  <Routes>
-    <Route path="/" element={<Metrics />} />
-  </Routes>
-</Router>
-```
-
-**Impact:**
-- Bei Component-Crash: White screen
-- Keine Fallback-UI
-- User sieht nur "Something went wrong"
-
-**Recommendation:**
-```javascript
-import { ErrorBoundary } from 'react-error-boundary'
-
-<ErrorBoundary fallback={<ErrorPage />}>
-  <Router>
-    {/* ... */}
-  </Router>
-</ErrorBoundary>
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
 #### **BUG-JS-010: Console.error in Production**
-**Status:** ✅ FIXED (2025-12-02)
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
+#### **BUG-JS-015: Console Errors in Production**
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 

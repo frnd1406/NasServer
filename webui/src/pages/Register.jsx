@@ -44,7 +44,9 @@ function Register() {
       navigate('/login')
     } catch (err) {
       setError(err.message)
-      console.error('Registration error:', err)
+      if (import.meta.env.DEV) {
+        console.error('Registration error:', err)
+      }
     } finally {
       setLoading(false)
     }

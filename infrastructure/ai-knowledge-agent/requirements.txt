@@ -9,17 +9,17 @@
 torch==2.6.0
 
 # Sentence Transformers - Pre-trained embedding models
-sentence-transformers==2.2.2
+sentence-transformers==3.1.1
 
 # PostgreSQL with pgvector support
 psycopg2-binary==2.9.9
-pgvector==0.2.3
+pgvector==0.2.5
 
 # Database connection pooling
 sqlalchemy==2.0.23
 
 # HTTP server for health checks
-flask==3.0.0
+flask==3.0.3
 
 # Logging
 loguru==0.7.2

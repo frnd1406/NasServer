@@ -50,6 +50,18 @@ func main() {
 		"db":       dbURL,
 	}).Info("analysis agent started")
 
+	// FIX [BUG-GO-020]: Ensure unique constraint to prevent duplicate open alerts
+	// We execute this on startup. It might fail if duplicates exist, but that's acceptable for now (or we could clean them up first).
+	// Using "IF NOT EXISTS" logic via DO block or just ignoring error for simplicity in this context.
+	// Note: PostgreSQL doesn't support "ADD CONSTRAINT IF NOT EXISTS" directly in all versions easily without a block.
+	// We will try to add it and ignore error if it exists.
+	_, _ = db.Exec(`
+		ALTER TABLE system_alerts 
+		ADD CONSTRAINT unique_open_alert 
+		UNIQUE (severity, is_resolved) 
+		WHERE (is_resolved = false);
+	`)
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

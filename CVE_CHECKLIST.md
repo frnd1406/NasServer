@@ -64,7 +64,20 @@ All critical security issues (CVSS ≥ 7.0) have been resolved. The system is re
 | **Description** | Some API endpoints documented in blueprints don't have corresponding OpenAPI specs |
 | **Remediation Plan** | Generate OpenAPI specs from code, add CI check |
 | **Target Date** | Phase 4 |
+### DEBIAN-KERNEL-CVES: Debian 13.2 Base Image Vulnerabilities
 
+| Field | Value |
+|-------|-------|
+| **CVE-ID** | Multiple (30 HIGH) |
+| **CVSS Score** | High (7.0-8.9) |
+| **Status** | 🟡 AFFECTED (No Fix Available) |
+| **Owner** | SystemSetupAgent |
+| **Affected Component** | AI Knowledge Agent (Debian 13.2 Base Image) |
+| **Description** | Upstream Debian kernel vulnerabilities. No patch available in current stable release. |
+| **Mitigation** | **Network Isolation**: Container runs in isolated network with no public internet access (except during build). Only communicates with API via internal Docker network. |
+| **Risk Acceptance** | Accepted until Debian upstream patch release. |
+
+---
 ---
 
 ## ✅ CLOSED CVEs (PHASE 1 - VERIFIED)
