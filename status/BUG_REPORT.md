@@ -587,6 +587,11 @@ func (s *BackupService) SetBackupPath(path string) error {
 
 ---
 
+#### **BUG-JS-014: Fehlende Security Headers (Nginx)**
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
 #### **BUG-GO-020: Analysis Alert-Duplikate**
 **Datei:** `infrastructure/analysis/main.go:108-116`
 **Severity:** 🟠 MAJOR
