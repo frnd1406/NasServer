@@ -38,7 +38,13 @@ function Login() {
       // Login successful, redirect to dashboard
       navigate('/dashboard')
     } catch (err) {
-      setError(err.message)
+      // FIX [BUG-JS-013]: Handle Rate Limiting (429)
+      if (err.status === 429) {
+        const retryAfter = err.message.match(/retry after (\d+)/i)?.[1] || 60
+        setError(`Zu viele Anmeldeversuche. Bitte warte ${retryAfter} Sekunden.`)
+      } else {
+        setError(err.message)
+      }
     } finally {
       setLoading(false)
     }

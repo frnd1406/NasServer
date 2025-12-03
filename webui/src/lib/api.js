@@ -42,170 +42,8 @@ export function getApiBaseUrl() {
   return API_BASE_URL
 }
 
-let logoutOverlay
-let logoutCountdownInterval
-let logoutRedirectScheduled = false
-
-function ensureLogoutStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById('session-warning-styles')) return
-
-  const style = document.createElement('style')
-  style.id = 'session-warning-styles'
-  style.textContent = `
-    .session-warning-overlay {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.35);
-      backdrop-filter: blur(12px);
-      z-index: 9999;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 180ms ease;
-    }
-    .session-warning-overlay.is-visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .session-warning-card {
-      max-width: 420px;
-      width: 90%;
-      padding: 24px 26px;
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(239,68,68,0.25), rgba(127,29,29,0.35));
-      border: 1px solid rgba(248,113,113,0.55);
-      box-shadow: 0 20px 70px rgba(239,68,68,0.35);
-      color: #fff;
-      backdrop-filter: blur(18px);
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    }
-    .session-warning-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: rgba(248,113,113,0.28);
-      border: 1px solid rgba(248,113,113,0.55);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .session-warning-title {
-      margin: 14px 0 6px 0;
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: 0.01em;
-    }
-    .session-warning-body {
-      margin: 0 0 12px 0;
-      color: rgba(255,255,255,0.9);
-      line-height: 1.4;
-      font-size: 15px;
-    }
-    .session-warning-timer {
-      font-weight: 800;
-      font-size: 17px;
-      color: #fecdd3;
-    }
-    .session-warning-subtle {
-      margin: 0;
-      color: rgba(255,255,255,0.78);
-      font-size: 13px;
-    }
-  `
-
-  document.head.appendChild(style)
-}
-
-function showLogoutOverlay(seconds) {
-  if (typeof document === 'undefined') return
-  ensureLogoutStyles()
-
-  if (!logoutOverlay) {
-    logoutOverlay = document.createElement('div')
-    logoutOverlay.className = 'session-warning-overlay'
-
-    // CRITICAL FIX: Use DOM methods instead of innerHTML to prevent XSS (BUG-JS-001)
-    const card = document.createElement('div')
-    card.className = 'session-warning-card'
-
-    const pill = document.createElement('div')
-    pill.className = 'session-warning-pill'
-    pill.textContent = 'Warnung · Session läuft ab'
-
-    const title = document.createElement('div')
-    title.className = 'session-warning-title'
-    title.textContent = 'Gleich wirst du abgemeldet'
-
-    const body = document.createElement('p')
-    body.className = 'session-warning-body'
-    body.textContent = 'Wir konnten deinen Token nicht erneuern. Du wirst in '
-
-    const timer = document.createElement('span')
-    timer.className = 'session-warning-timer'
-    timer.setAttribute('data-session-timer', '')
-    timer.textContent = `${seconds}s`
-
-    body.appendChild(timer)
-    body.appendChild(document.createTextNode(' abgemeldet.'))
-
-    const subtle = document.createElement('p')
-    subtle.className = 'session-warning-subtle'
-    subtle.textContent = 'Bitte melde dich erneut an, um weiterzuarbeiten.'
-
-    card.appendChild(pill)
-    card.appendChild(title)
-    card.appendChild(body)
-    card.appendChild(subtle)
-
-    logoutOverlay.appendChild(card)
-    document.body.appendChild(logoutOverlay)
-
-    // Trigger fade-in
-    requestAnimationFrame(() => {
-      logoutOverlay.classList.add('is-visible')
-    })
-  }
-
-  const timerEl = logoutOverlay.querySelector('[data-session-timer]')
-  if (!timerEl) return
-
-  let remaining = seconds
-  timerEl.textContent = `${remaining}s`
-
-  if (logoutCountdownInterval) {
-    clearInterval(logoutCountdownInterval)
-  }
-
-  logoutCountdownInterval = setInterval(() => {
-    remaining -= 1
-    if (remaining <= 0) {
-      clearInterval(logoutCountdownInterval)
-      return
-    }
-    timerEl.textContent = `${remaining}s`
-  }, 1000)
-}
-
-function clearAuth() {
-  // Clear in-memory token via AuthContext
-  if (authContextRef?.logout) {
-    authContextRef.logout()
-  }
-
-  // Legacy cleanup: Remove any old tokens from localStorage
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-  localStorage.removeItem('csrfToken')
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('csrf_token')
-}
+// FIX [BUG-JS-003]: Removed global state and DOM manipulation
+// Session warning is now handled by AuthContext
 
 async function refreshAccessToken() {
   const refreshToken = localStorage.getItem('refreshToken')
@@ -252,19 +90,16 @@ async function refreshAccessToken() {
 
 function redirectToLogin() {
   if (typeof window === 'undefined') {
-    clearAuth()
     return
   }
 
-  if (logoutRedirectScheduled) return
-  logoutRedirectScheduled = true
-
-  clearAuth()
-  showLogoutOverlay(LOGOUT_COUNTDOWN_SECONDS)
-
-  setTimeout(() => {
+  // Use AuthContext to trigger session warning UI
+  if (authContextRef?.showSessionWarning) {
+    authContextRef.showSessionWarning()
+  } else {
+    // Fallback if context not available
     window.location.href = '/login'
-  }, LOGOUT_COUNTDOWN_SECONDS * 1000)
+  }
 }
 
 function buildHeaders(accessToken, headersOverride = {}) {

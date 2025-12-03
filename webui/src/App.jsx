@@ -1,3 +1,4 @@
+import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { setAuthContext } from './lib/api'
@@ -38,13 +39,44 @@ function AuthContextBridge({ children }) {
   return children
 }
 
+// FIX [BUG-JS-008]: Simple ErrorBoundary component
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Uncaught error:", error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#dc2626' }}>
+          <h1>Something went wrong.</h1>
+          <p>Please refresh the page.</p>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
 function App() {
   return (
     <AuthProvider>
       <AuthContextBridge>
-        <Router>
-          <AppRoutes />
-        </Router>
+        <ErrorBoundary>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </ErrorBoundary>
       </AuthContextBridge>
     </AuthProvider>
   )

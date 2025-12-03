@@ -44,29 +44,41 @@ function Dashboard() {
       return
     }
 
+    let mounted = true
     const fetchHealth = async () => {
       try {
         const data = await apiRequest('/health', { method: 'GET' })
-        setHealth(data)
-        setHealthError('')
+        if (mounted) {
+          setHealth(data)
+          setHealthError('')
+        }
       } catch (err) {
-        setHealth(null)
-        setHealthError(err.message || 'Health-Check fehlgeschlagen')
+        if (mounted) {
+          setHealth(null)
+          setHealthError(err.message || 'Health-Check fehlgeschlagen')
+        }
       }
     }
 
     fetchHealth()
     const interval = setInterval(fetchHealth, HEALTH_POLL_MS)
-    return () => clearInterval(interval)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
+    let mounted = true
     const fetchMonitoring = async () => {
       try {
         const data = await apiRequest('/api/monitoring')
-        setSamples(data.items || [])
-        setMonitoringError('')
+        if (mounted) {
+          setSamples(data.items || [])
+          setMonitoringError('')
+        }
       } catch (err) {
+        if (!mounted) return
         if (err.status === 401) {
           navigate('/login')
           return
@@ -77,7 +89,10 @@ function Dashboard() {
 
     fetchMonitoring()
     const interval = setInterval(fetchMonitoring, MONITORING_POLL_MS)
-    return () => clearInterval(interval)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
   }, [navigate])
 
   const dependencyStatus = (deps = {}) => {

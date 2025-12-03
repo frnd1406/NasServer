@@ -91,42 +91,7 @@ if contains(allowedOrigins, origin) {
 ---
 
 #### **BUG-GO-002: RateLimiter Race Condition + Memory Leak**
-**Datei:** `infrastructure/api/src/middleware/ratelimit.go:36-61`
-**Severity:** 🔴 CRITICAL
-**Category:** Concurrency + Memory Management
-
-**Root Cause:**
-```go
-if len(rl.limiters) > 10000 {
-    rl.limiters = make(map[string]*rate.Limiter) // Alle Limits reset!
-}
-```
-
-**Probleme:**
-1. **Memory Leak:** IP-Adressen werden nie entfernt (außer bei 10k threshold)
-2. **Race Condition:** Map-Zugriff zwischen RLock/Unlock und Lock nicht atomic
-3. **DoS:** Bei 10k IPs werden ALLE Limits zurückgesetzt, auch von legitimen Users
-
-**Impact:**
-- Memory wächst unbegrenzt bis 10k threshold
-- Attacker kann alle Rate Limits resetten
-- Concurrent map read/write panic möglich
-
-**Steps to Reproduce:**
-```bash
-# 1. Sende Requests von 10.000+ verschiedenen IPs
-for i in {1..10001}; do
-  curl -X POST -H "X-Forwarded-For: 1.2.3.$i" https://api/endpoint &
-done
-
-# 2. Alle Rate-Limits werden zurückgesetzt
-# 3. DoS-Angriff möglich
-```
-
-**Recommendation:**
-- TTL-based cleanup mit sync.Map oder Cache-Library (go-cache)
-- Atomic operations für Map-Zugriffe
-- LRU eviction statt kompletter Reset
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
@@ -252,76 +217,12 @@ localStorage ist zugänglich für jedes XSS-Script.
 ### 🏗️ ARCHITECTURE & CONCURRENCY
 
 #### **BUG-GO-003: Scheduler Race Condition**
-**Datei:** `infrastructure/api/src/scheduler/cron.go:85-103`
-**Severity:** 🔴 CRITICAL
-**Category:** Concurrency - Race Condition
-
-**Root Cause:**
-```go
-func runBackupJob() {
-    mu.Lock()
-    svc := backupSvc
-    cfg := cfgRef
-    mu.Unlock()
-    // Zwischen Unlock und Verwendung kann backupSvc nil werden!
-    svc.CreateBackup(...)
-}
-```
-
-**Impact:**
-- Nil pointer dereference → Panic
-- Backup fehlschlägt ohne Error
-- Service instabil bei Config-Updates
-
-**Steps to Reproduce:**
-```bash
-# 1. Starte Backup Scheduler
-# 2. Gleichzeitig: Settings-Update → RestartScheduler()
-# 3. runBackupJob läuft mit nil/veralteter Referenz
-# 4. Panic: nil pointer dereference
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
 #### **BUG-GO-008: Orchestrator Service Map Race Condition**
-**Datei:** `orchestrator/orchestrator_loop.go:121-126, 188-189`
-**Severity:** 🔴 CRITICAL
-**Category:** Concurrency - Concurrent Map Access
-
-**Root Cause:**
-```go
-func (o *Orchestrator) checkAllServices(ctx context.Context) {
-    for _, service := range o.services { // Keine Lock-Protection!
-        o.checkService(ctx, service) // Modifiziert die Map!
-    }
-}
-```
-
-**Impact:**
-```
-fatal error: concurrent map iteration and map write
-```
-
-**Steps to Reproduce:**
-```bash
-# 1. API-Request auf /api/services
-# 2. Gleichzeitig: Health-Check läuft
-# 3. Panic: concurrent map access
-```
-
-**Recommendation:**
-```go
-o.mu.RLock()
-servicesCopy := make([]*ServiceStatus, 0, len(o.services))
-for _, svc := range o.services {
-    servicesCopy = append(servicesCopy, svc)
-}
-o.mu.RUnlock()
-
-for _, svc := range servicesCopy {
-    o.checkService(ctx, svc)
-}
-```
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 
@@ -744,6 +645,31 @@ from ai_knowledge_agent.db_connection import DatabaseConnection
 
 #### **BUG-PY-009: Embedding-Dimension nicht validiert**
 **Status:** ✅ FIXED (2025-12-02)
+
+---
+
+#### **BUG-JS-003: Memory Leak durch Global State in API Modul**
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
+#### **BUG-JS-006: Race Condition in Dashboard (Health Check)**
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
+#### **BUG-JS-007: Race Condition in Dashboard (Monitoring)**
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
+#### **BUG-JS-008: Fehlende Error Boundaries**
+**Status:** ✅ FIXED (2025-12-03)
+
+---
+
+#### **BUG-JS-013: Kein Feedback bei Login Rate Limit**
+**Status:** ✅ FIXED (2025-12-03)
 
 ---
 

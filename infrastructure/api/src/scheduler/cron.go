@@ -70,8 +70,13 @@ func startLocked() error {
 
 	cronRunner = cron.New(cron.WithParser(cronParser))
 
+	// FIX [BUG-GO-003]: Capture globals to local variables to avoid data race in closure
+	svc := backupSvc
+	cfg := cfgRef
+	log := logger
+
 	job := func() {
-		runBackupJob(backupSvc, cfgRef, logger)
+		runBackupJob(svc, cfg, log)
 	}
 
 	if _, err := cronRunner.AddFunc(schedule, job); err != nil {
