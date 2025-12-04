@@ -5,8 +5,16 @@ function deriveDefaultBaseUrl() {
     return "http://localhost:8080";
   }
   const { protocol, hostname } = window.location;
-  const defaultPort = protocol === "https:" ? "8443" : "8080";
-  return `${protocol}//${hostname}:${defaultPort}`;
+
+  // In production (via nginx), use relative URLs so requests go through the proxy
+  // Only use explicit port for localhost development
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    const defaultPort = protocol === "https:" ? "8443" : "8080";
+    return `${protocol}//${hostname}:${defaultPort}`;
+  }
+
+  // Production: use empty base URL (relative paths work via nginx proxy)
+  return "";
 }
 
 function normalizeBaseUrl(url) {
@@ -132,7 +140,7 @@ function showLogoutOverlay(seconds) {
     `;
     document.body.appendChild(overlay);
   }
-  
+
   // Make sure to show it
   requestAnimationFrame(() => {
     overlay.classList.add("is-visible");
@@ -257,7 +265,7 @@ async function performRequest(path, options, tokenOverride) {
     });
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error(`Request timed out after ${ (options.timeout || 30000) / 1000} seconds`);
+      throw new Error(`Request timed out after ${(options.timeout || 30000) / 1000} seconds`);
     }
     throw new Error(`Cannot reach API at ${API_BASE_URL} (${err.message})`);
   } finally {
