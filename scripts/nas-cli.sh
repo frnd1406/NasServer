@@ -118,8 +118,8 @@ function forensic_ip_check() {
     
     echo -e "${YELLOW}>> Scanne $TARGET_IP...${NC}"
     echo "---------------------------------------------------"
-    # curl auf ip-api.com
-    curl -s "http://ip-api.com/json/$TARGET_IP" | grep -E '"country"|"city"|"isp"|"org"|"as"|"query"' | tr -d '{}"'
+    # curl auf ip-api.com (mit Timeout)
+    curl -s -m 10 "http://ip-api.com/json/$TARGET_IP" | grep -E '"country"|"city"|"isp"|"org"|"as"|"query"' | tr -d '{}"\'
     echo "---------------------------------------------------"
     wait_for_enter
 }
@@ -148,7 +148,7 @@ function test_api_endpoint() {
 
     echo -ne "${CYAN}Testing: $description${NC} ... "
 
-    local cmd="curl -s -X $method"
+    local cmd="curl -s -m 10 -X $method"
 
     if [ -n "$auth_token" ]; then
         cmd="$cmd -H 'Authorization: Bearer $auth_token'"
@@ -231,7 +231,7 @@ function test_all_main_api() {
     test_api_endpoint "PUT" "$BASE_URL/api/v1/settings" "Update Settings" '{"key":"value"}'
 
     echo -e "\n${MAGENTA}⚠️  HINWEIS: Einige Endpoints können in Wartung sein (502/503)${NC}"
-    echo -e "${YELLOW}📖 Details zu allen Endpoints: /home/freun/Agent/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
+    echo -e "${YELLOW}📖 Details zu allen Endpoints: $BASE_DIR/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
 }
 
 function test_all_ai_api() {
@@ -311,7 +311,7 @@ function test_ai_embeddings_detailed() {
 
     for text in "${texts[@]}"; do
         echo -e "${CYAN}Input: \"$text\"${NC}"
-        response=$(curl -s -X POST "$BASE_URL/api/v1/embed" \
+        response=$(curl -s -m 15 -X POST "$BASE_URL/api/v1/embed" \
             -H "Content-Type: application/json" \
             -d "{\"text\":\"$text\"}" \
             -w "\n%{http_code}")
@@ -377,7 +377,7 @@ function test_full_system() {
     echo -e "\n${GREEN}════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}✓ FULL SYSTEM TEST ABGESCHLOSSEN${NC}"
     echo -e "${YELLOW}⚠️  HINWEIS: Einige Services können in Wartung sein (502/503)${NC}"
-    echo -e "${YELLOW}📖 Dokumentation: /home/freun/Agent/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
+    echo -e "${YELLOW}📖 Dokumentation: $BASE_DIR/API_ENDPOINTS_COMPREHENSIVE.md${NC}"
     echo -e "${GREEN}════════════════════════════════════════════════${NC}"
 
     wait_for_enter
