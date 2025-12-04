@@ -69,8 +69,8 @@ docs/
 
 ## Weitere Dokumentation
 
-- **Status Reports:** `/status/` - Agent-Status und Phase-Reports (siehe auch `docs/planning/AGENT_MATRIX.md`)
-- **System-Übersicht:** `/NAS_AI_SYSTEM.md`
+- **Archivierte Status Reports:** `/.archive/status/` - Historische Agent-Status und Phase-Reports
+- **System-Übersicht:** `/README.md`
 - **CVE Checklist:** `/CVE_CHECKLIST.md`
 
 ## Navigation
@@ -88,5 +88,5 @@ grep -r "keyword" docs/
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-21
+**Letzte Aktualisierung:** 2025-12-04
 **Struktur:** Gemäß `STRUCTURE_PROPOSAL.md` und Konsolidierungsplan

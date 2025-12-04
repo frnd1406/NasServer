@@ -1,35 +1,80 @@
-# NAS.AI v1.0 - Secure. Automated. Beautiful.
+# NAS.AI
 
-NAS.AI liefert einen komplett automatisierten, sicherheitsgehärteten Storage-Stack mit Nebula Glassmorphism UI, Auto-Backup-Scheduler und Fail-Fast-Architektur (JWT/CSRF, CORS-Whitelist, Rate-Limits).
+**Version:** 2.0  
+**Status:** Phase 2.2 - AI Core  
+**Updated:** 2025-12-04
 
-## Key Features
-- Auto-Backup Scheduler (Cron, Retention, Zielpfad)
-- Nebula Glassmorphism UI (Files, Backups, Alerts)
-- Fail-Fast Security Architecture (JWT/CSRF, starke Secrets, CORS/Ratelimit)
-- Postgres Persistence & Redis Caching
+Secure, automated storage with semantic AI search and glassmorphism UI.
 
-## Quickstart (Production)
-1) Images bereitstellen (z.B. Registry oder lokal gebaut als `nas-api:1.0.0`, `nas-webui:1.0.0`, Agents entsprechend).
-2) Compose starten:
+---
+
+## Features
+
+- 🔒 **Security** - JWT/CSRF, CORS, Rate Limiting
+- 🧠 **AI Search** - Semantic embeddings with pgvector
+- 💾 **Auto-Backup** - Scheduled with retention policies
+- 🎨 **Nebula UI** - Glassmorphism design
+
+---
+
+## Quick Start
+
 ```bash
-docker compose -f infrastructure/docker-compose.prod.yml up -d
+# Start production stack
+cd infrastructure
+docker compose -f docker-compose.prod.yml up -d
+
+# Access
+# API:   http://localhost:8080
+# WebUI: http://localhost:8080 (via nginx)
+# AI:    http://localhost:5000
 ```
-3) UI aufrufen: http://localhost:3001 (API unter http://localhost:8080).
 
-## Screenshots (Platzhalter)
-- Dashboard Overview – `docs/img/dashboard-placeholder.png`
-- Backup Planner – `docs/img/backup-placeholder.png`
-- Security & Alerts – `docs/img/alerts-placeholder.png`
+---
 
-## Dienste
-- API: http://localhost:8080
-- WebUI: http://localhost:3001
-- Monitoring Agent: sendet System-Metriken an `/api/v1/system/metrics`
-- Analysis Agent: bewertet Metriken, schreibt Alerts in `system_alerts`
-- Pentester Agent: prüft Security Headers & einfache Schwachstellen
+## Services
 
-## Struktur
-- `infrastructure/` – API, WebUI, Agents, Docker Compose.
-- `docs/` – Guides, Policies, Architektur.
-- `status/` – Saubere Status-Historie ab v1.x (Archiv unter `status/archive`).
-- `scripts/` – Admin- und Security-Skripte.
+| Service | Port | Purpose |
+|---------|------|---------|
+| **API** | 8080 | Go backend |
+| **WebUI** | 80 | Vite frontend |
+| **AI Agent** | 5000 | Embeddings & search |
+| **Orchestrator** | 9000 | Health monitoring |
+| **PostgreSQL** | 5432 | pgvector database |
+| **Redis** | 6379 | Caching |
+
+---
+
+## Structure
+
+```
+f1406/
+├── infrastructure/       # Docker services (API, WebUI, AI, etc.)
+├── orchestrator/         # Health monitoring service
+├── scripts/              # CLI tools (nas-cli.sh)
+├── docs/                 # Blueprints, policies
+├── contrib/              # Trivy report templates
+└── .archive/             # Historical reports
+```
+
+---
+
+## CLI
+
+```bash
+./scripts/nas-cli.sh
+```
+
+Features: Deployment, Logs, API Testing, Forensics, Database backup.
+
+---
+
+## Documentation
+
+- **API Endpoints:** `API_ENDPOINTS_COMPREHENSIVE.md`
+- **CVE Checklist:** `CVE_CHECKLIST.md`
+- **Blueprints:** `docs/blueprints/`
+
+---
+
+**License:** See LICENSE

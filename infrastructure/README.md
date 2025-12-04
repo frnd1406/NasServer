@@ -1,160 +1,96 @@
 # NAS.AI Infrastructure
 
-**Version:** 1.0
-**Datum:** 2025-11-21
-**Status:** Foundation Setup (Phase 1)
+**Version:** 2.0  
+**Status:** Phase 2.2 - AI Core  
+**Updated:** 2025-12-04
 
 ---
 
-## STRUKTUR
+## Services
+
+| Service | Port | Technology | Status |
+|---------|------|------------|--------|
+| **postgres** | 5432 | pgvector/pg16 | ✅ |
+| **redis** | 6379 | Redis 7 Alpine | ✅ |
+| **api** | 8080 | Go 1.22 | ✅ |
+| **webui** | 80 | Vite + TailwindCSS | ✅ |
+| **monitoring** | - | Go Metrics Agent | ✅ |
+| **analysis-agent** | - | Go Analytics | ✅ |
+| **pentester-agent** | - | Go Security | ✅ |
+| **ai-knowledge-agent** | 5000 | Python ML | ✅ |
+
+---
+
+## Quick Start
+
+```bash
+# Production
+docker compose -f docker-compose.prod.yml up -d
+
+# Development
+docker compose -f docker-compose.dev.yml up -d
+```
+
+---
+
+## Structure
 
 ```
 infrastructure/
-├── api/              # Go Backend API (APIAgent)
-├── webui/            # React/Vite Frontend (WebUIAgent)
-├── orchestrator/     # Event-Dienst & Queue (Go)
-├── monitoring/       # Prometheus, Grafana, Loki
-└── scripts/          # Deployment & Maintenance Scripts
+├── docker-compose.prod.yml   # Production stack
+├── docker-compose.dev.yml    # Development stack
+├── .env.prod                 # Production secrets
+│
+├── api/                      # Go Backend (Port 8080)
+├── webui/                    # Vite Frontend (Port 80)
+├── db/                       # PostgreSQL migrations
+├── ai_knowledge_agent/       # Python ML Service (Port 5000)
+├── monitoring/               # Metrics Agent
+├── analysis/                 # Analytics Agent
+├── pentester/                # Security Agent
+└── scripts/                  # Deployment scripts
 ```
 
 ---
 
-## COMPONENTS
+## Environment Variables
 
-### 1. API (Backend)
-- **Technologie:** Go 1.22+
-- **Owner:** APIAgent
-- **Pfad:** `infrastructure/api/`
-- **Dokumentation:** `infrastructure/api/README.md`
-- **Status:** Phase 1 - Foundation Setup
-
-### 2. WebUI (Frontend)
-- **Technologie:** React 18 + Vite + TypeScript
-- **Owner:** WebUIAgent
-- **Pfad:** `infrastructure/webui/`
-- **Dokumentation:** `infrastructure/webui/README.md`
-- **Status:** Phase 1 - Setup Pending
-
-### 3. Orchestrator
-- **Technologie:** Go Event Service
-- **Owner:** Orchestrator + SystemSetupAgent
-- **Pfad:** `infrastructure/orchestrator/`
-- **Status:** Phase 2 - Planned
-
-### 4. Monitoring
-- **Technologie:** Prometheus, Grafana, Loki
-- **Owner:** SystemSetupAgent
-- **Pfad:** `infrastructure/monitoring/`
-- **Status:** Phase 2 - Deployment Pending
-
-### 5. Scripts
-- **Inhalt:** Deployment, Backup, Maintenance Scripts
-- **Owner:** SystemSetupAgent
-- **Pfad:** `infrastructure/scripts/`
-- **Status:** As needed
-
----
-
-## DEVELOPMENT WORKFLOW
-
-### Setup (First Time)
-
-1. **Install Prerequisites:**
-   ```bash
-   # Go 1.22+
-   go version
-
-   # Node.js 20+
-   node --version
-
-   # Docker & Docker Compose
-   docker --version
-   docker compose version
-   ```
-
-2. **Clone Repository:**
-   ```bash
-   git clone <repo-url>
-   cd Agent/infrastructure
-   ```
-
-3. **Setup Backend:**
-   ```bash
-   cd api
-   # Follow instructions in api/README.md
-   ```
-
-4. **Setup Frontend:**
-   ```bash
-   cd ../webui
-   # Follow instructions in webui/README.md
-   ```
-
-### Running Development Environment
+Create `.env.prod` with:
 
 ```bash
-# From infrastructure/ directory
-
-# Start dev infrastructure (DB, Redis, etc.)
-docker compose -f docker-compose.dev.yml up -d
-
-# Start backend API
-cd api && go run src/main.go
-
-# Start frontend (in another terminal)
-cd webui && npm run dev
+POSTGRES_PASSWORD=your_secure_password
+JWT_SECRET=your_jwt_secret
+MONITORING_TOKEN=your_monitoring_token
+CORS_ORIGINS=https://your-domain.com
+FRONTEND_URL=https://your-domain.com
 ```
 
 ---
 
-## ARCHITECTURE REFERENCES
+## Deployment
 
-- **System Overview:** `/home/user/Agent/NAS_AI_SYSTEM.md`
-- **Roadmap:** `/home/user/Agent/docs/planning/MASTER_ROADMAP.md`
-- **Agent Matrix:** `/home/user/Agent/docs/planning/AGENT_MATRIX.md`
-- **Dev Guide:** `/home/user/Agent/docs/development/DEV_GUIDE.md`
-- **Security:** `/home/user/Agent/docs/security/SECURITY_HANDBOOK.pdf`
+```bash
+# Full rebuild
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
 
----
+# Restart single service
+docker compose -f docker-compose.prod.yml restart api
 
-## DEPLOYMENT
-
-### Phase 1 Goals (Current)
-- ✅ Directory structure created
-- ⏳ API Foundation (Go backend with Auth, Files, Health)
-- ⏳ WebUI Foundation (React/Vite with Auth flow)
-- ⏳ Docker Compose Dev Environment
-- ⏳ CI/CD Pipeline (Tests, Linting, Security Scans)
-
-### Phase 2 Goals
-- Vault Integration
-- Prometheus + Loki + Grafana
-- Orchestrator Event Service
-- Advanced Security (CSRF, Rate Limiting)
+# View logs
+docker compose -f docker-compose.prod.yml logs -f api
+```
 
 ---
 
-## AGENT ASSIGNMENTS
+## Health Checks
 
-| Component | Owner | Phase | Status |
-|-----------|-------|-------|--------|
-| API Backend | APIAgent | 1 | ⏳ Starting |
-| WebUI Frontend | WebUIAgent | 1 | ⏳ Starting |
-| Docker Dev Env | SystemSetupAgent | 1 | ⏳ Pending |
-| Orchestrator | Orchestrator | 2 | ⏳ Planned |
-| Monitoring Stack | SystemSetupAgent | 2 | ⏳ Planned |
+| Service | Endpoint |
+|---------|----------|
+| API | `http://localhost:8080/health` |
+| AI Agent | `http://localhost:5000/health` |
+| Orchestrator | `http://localhost:9000/health` |
 
 ---
 
-## CONTACT & SUPPORT
-
-**Orchestrator:** Koordiniert alle Infrastructure-Aktivitäten
-**Status Logs:** `/home/user/Agent/status/<AgentName>/`
-**Issues:** Incident-Tickets in `/var/lib/orchestrator/incidents/` (future)
-
----
-
-**Letzte Aktualisierung:** 2025-11-21
-**Nächste Milestone:** Phase 1 Foundation Complete (Target: 2025-11-28)
-
-Terminal freigegeben.
+**Maintained by:** NAS.AI Team
