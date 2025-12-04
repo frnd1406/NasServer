@@ -95,22 +95,14 @@ def health_check():
     """
     Health check endpoint for Docker healthcheck.
     Returns 200 if model loaded and DB connected, 503 otherwise.
+    FIX: Removed expensive model.encode() call - use known constant instead.
     """
-    embedding_dim = None
-    if model_loaded and model is not None:
-        with model_lock:
-            if model is not None: # Double check after lock
-                try:
-                    embedding_dim = len(model.encode("test"))
-                except Exception:
-                    embedding_dim = None
-
     status = {
         "status": "healthy" if (model_loaded and db_connected) else "unhealthy",
         "model_loaded": model_loaded,
         "database_connected": db_connected,
         "model_name": os.getenv("MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2"),
-        "embedding_dimension": embedding_dim
+        "embedding_dimension": 384 if model_loaded else None  # Known constant for MiniLM-L6-v2
     }
 
     status_code = 200 if (model_loaded and db_connected) else 503

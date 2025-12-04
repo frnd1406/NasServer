@@ -52,6 +52,29 @@ def init_db_pool():
             **DSN
         )
         logger.info("Database connection pool initialized.")
+        
+        # FIX: Run DDL once at startup instead of every request
+        conn = db_pool.getconn()
+        try:
+            register_vector(conn)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS file_embeddings (
+                        id SERIAL PRIMARY KEY,
+                        file_id TEXT NOT NULL,
+                        file_path TEXT NOT NULL,
+                        mime_type TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        embedding vector(384),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(file_id)
+                    )
+                """)
+                conn.commit()
+            logger.info("Database schema verified.")
+        finally:
+            db_pool.putconn(conn)
+        
         return True
     except Exception as e:
         logger.error("Failed to initialize DB pool: %s", e)
@@ -149,25 +172,11 @@ def process_file():
 
         # FIX [BUG-PY-002]: Use connection pool context manager to ensure cleanup
         with get_db_connection() as conn:
-            # CRITICAL FIX: Register pgvector type adapter
+            # Register pgvector type adapter (required per connection)
             register_vector(conn)
 
             with conn.cursor() as cur:
-                # Create table if it doesn't exist
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS file_embeddings (
-                        id SERIAL PRIMARY KEY,
-                        file_id TEXT NOT NULL,
-                        file_path TEXT NOT NULL,
-                        mime_type TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        embedding vector(384),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        UNIQUE(file_id)
-                    )
-                """)
-
-                # Insert or update embedding
+                # Insert or update embedding (DDL moved to init_db_pool)
                 cur.execute("""
                     INSERT INTO file_embeddings (file_id, file_path, mime_type, content, embedding)
                     VALUES (%s, %s, %s, %s, %s)
@@ -218,6 +227,81 @@ def embed_query():
     except Exception as e:
         logger.error("Error generating query embedding: %s", str(e), exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/embed", methods=["POST"])
+def embed():
+    """
+    Generate embedding for text input.
+    
+    Input: POST JSON {"text": "string"}
+    Output: JSON {"status": "ok", "data": {"embedding": [...], "dimensions": 384}, "error": null}
+    """
+    # Model readiness check
+    if not model_loaded or model is None:
+        logger.error("Embed request rejected: model not loaded")
+        return jsonify({
+            "status": "error",
+            "data": None,
+            "error": "Model not loaded, service unavailable"
+        }), 503
+
+    try:
+        # Parse JSON payload
+        try:
+            data = request.get_json()
+        except Exception as json_err:
+            logger.error("JSON parse error in /embed: %s", json_err)
+            return jsonify({
+                "status": "error",
+                "data": None,
+                "error": "Invalid JSON payload"
+            }), 400
+
+        if not data:
+            return jsonify({
+                "status": "error",
+                "data": None,
+                "error": "Missing JSON payload"
+            }), 400
+
+        # Validate 'text' field
+        text = data.get("text")
+        if text is None or not isinstance(text, str):
+            return jsonify({
+                "status": "error",
+                "data": None,
+                "error": "Missing or invalid 'text' field (string required)"
+            }), 400
+
+        if not text.strip():
+            return jsonify({
+                "status": "error",
+                "data": None,
+                "error": "Text cannot be empty or whitespace-only"
+            }), 400
+
+        # Inference
+        logger.info("Generating embedding via /embed (%d chars)", len(text))
+        embedding = model.encode(text)
+        embedding_list = embedding.tolist()
+
+        return jsonify({
+            "status": "ok",
+            "data": {
+                "embedding": embedding_list,
+                "dimensions": len(embedding_list)
+            },
+            "error": None
+        }), 200
+
+    except Exception as e:
+        logger.error("Inference error in /embed: %s", str(e), exc_info=True)
+        return jsonify({
+            "status": "error",
+            "data": None,
+            "error": f"Inference failed: {str(e)}"
+        }), 500
 
 
 def main():

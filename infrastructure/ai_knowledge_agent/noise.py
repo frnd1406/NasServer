@@ -47,33 +47,33 @@ def inject_noise(text: str, intensity: float = 0.1, seed: Optional[int] = None) 
     Returns:
         Text with noise injected
     """
-    if seed is not None:
-        random.seed(seed)
+    # FIX: Use isolated RNG instance to avoid polluting global random state
+    rng = random.Random(seed)
     
     result = text
     
     # Apply keyword typos (word-level)
     for keyword, typos in KEYWORD_TYPOS.items():
-        if keyword in result and random.random() < intensity * 2:
-            typo = random.choice(typos)
+        if keyword in result and rng.random() < intensity * 2:
+            typo = rng.choice(typos)
             # Replace only first occurrence to keep some readable
             result = result.replace(keyword, typo, 1)
     
     # Apply character substitutions (char-level)
     chars = list(result)
     for i, char in enumerate(chars):
-        if char in CHAR_SUBSTITUTIONS and random.random() < intensity:
-            chars[i] = random.choice(CHAR_SUBSTITUTIONS[char])
+        if char in CHAR_SUBSTITUTIONS and rng.random() < intensity:
+            chars[i] = rng.choice(CHAR_SUBSTITUTIONS[char])
     
     result = ''.join(chars)
     
     # Occasional letter swaps
-    if random.random() < intensity:
+    if rng.random() < intensity:
         words = result.split()
         for j in range(len(words)):
-            if len(words[j]) > 3 and random.random() < intensity:
+            if len(words[j]) > 3 and rng.random() < intensity:
                 # Swap two adjacent letters
-                idx = random.randint(1, len(words[j]) - 2)
+                idx = rng.randint(1, len(words[j]) - 2)
                 word_chars = list(words[j])
                 word_chars[idx], word_chars[idx + 1] = word_chars[idx + 1], word_chars[idx]
                 words[j] = ''.join(word_chars)
