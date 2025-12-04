@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Log: {{ log.server_name }}</title>
+    <style>
+        body { font-family: 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        h1 { color: #569cd6; }
+        .meta { color: #808080; margin-bottom: 20px; }
+        .log-entry { margin: 2px 0; }
+        .timestamp { color: #808080; }
+        .INFO { color: #4ec9b0; }
+        .WARN { color: #dcdcaa; }
+        .ERROR { color: #f14c4c; }
+        .DEBUG { color: #9cdcfe; }
+        .server { color: #ce9178; }
+    </style>
+</head>
+<body>
+    <h1>Server Log: {{ log.server_name }}</h1>
+    <p class="meta">Generated: {{ log.log_date.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    
+    <div class="log-entries">
+        {% for entry in log.entries %}
+        <div class="log-entry">
+            <span class="timestamp">[{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}]</span>
+            <span class="{{ entry.level }}">[{{ entry.level }}]</span>
+            <span class="server">[{{ entry.server }}]</span>
+            {{ entry.message }}
+        </div>
+        {% endfor %}
+    </div>
+
+    <p class="meta" style="margin-top: 20px;">
+        Total Entries: {{ log.entries|length }} | Server Uptime: {{ log.uptime_hours }} hours
+    </p>
+</body>
+</html>

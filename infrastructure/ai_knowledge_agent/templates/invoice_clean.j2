@@ -1,0 +1,36 @@
+RECHNUNG
+
+Rechnungsnummer: {{ invoice.invoice_number }}
+Rechnungsdatum: {{ invoice.invoice_date.strftime('%d.%m.%Y') }}
+Fälligkeitsdatum: {{ invoice.due_date.strftime('%d.%m.%Y') }}
+
+Von:
+{{ invoice.company.name }}
+{{ invoice.company.street }}
+{{ invoice.company.postcode }} {{ invoice.company.city }}
+Steuernummer: {{ invoice.company.tax_id }}
+
+An:
+{{ invoice.customer.name }}
+{{ invoice.customer.street }}
+{{ invoice.customer.postcode }} {{ invoice.customer.city }}
+
+Positionen:
+{% for item in invoice.items %}
+{{ item.position }}. {{ item.name }} - {{ item.quantity }}x à {{ "%.2f"|format(item.unit_price) }}€ = {{ "%.2f"|format(item.total) }}€
+{% endfor %}
+
+Nettobetrag: {{ "%.2f"|format(invoice.net_total) }}€
+MwSt. (19%): {{ "%.2f"|format(invoice.vat) }}€
+━━━━━━━━━━━━━━━━━━━━━━━
+Gesamtbetrag: {{ "%.2f"|format(invoice.gross_total) }}€
+
+Zahlungsinformationen:
+IBAN: {{ invoice.iban }}
+BIC: {{ invoice.bic }}
+Verwendungszweck: {{ invoice.invoice_number }}
+
+Bitte überweisen Sie den Betrag bis zum Fälligkeitsdatum.
+
+Mit freundlichen Grüßen
+{{ invoice.company.name }}
