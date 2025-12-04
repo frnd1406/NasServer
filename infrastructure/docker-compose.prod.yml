@@ -160,6 +160,8 @@ services:
         condition: service_healthy
     volumes:
       - nas_data:/mnt/data
+    ports:
+      - "5000:5000"
     deploy:
       resources:
         limits:
