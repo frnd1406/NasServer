@@ -1,100 +1,80 @@
-# Dokumentation
+# NAS.AI
 
-Übersicht über alle Projektdokumentationen.
+**Version:** 2.0  
+**Status:** Phase 2.2 - AI Core  
+**Updated:** 2025-12-04
 
----
-
-> **⚠️ WICHTIG FÜR ALLE AGENTEN:**
-> Vor Verwendung dieser Dokumentation MUSS die [Agent Pre-Task Checklist](AGENT-CHECKLIST.md) durchgearbeitet werden.
->
-> **Pflichtlektüre vor jeder Aufgabe:**
-> 1.  `NAS_AI_SYSTEM.md` - System-Architektur & Governance
-> 2.  `docs/security/SECURITY_HANDBOOK.md` - Audit & Evidenz
-> 3.  `docs/planning/AGENT_MATRIX.md` - Agenten-Arbeitsregeln
->
-> **Arbeitsablauf:** Lesen → Analysieren → Planen → Umsetzung (STRIKT!)
+Secure, automated storage with semantic AI search and glassmorphism UI.
 
 ---
 
-## Verzeichnisstruktur
+## Features
 
-```
-docs/
-├── adr/                # Architecture Decision Records
-├── blueprints/         # WebUI Design-Dokumente
-├── planning/           # Strategische Planung & Roadmaps
-├── policies/           # Richtlinien und Policies
-└── manuals/            # Benutzerhandbücher
-└── vision/             # Langfristige Vision und Konzepte
-```
+- 🔒 **Security** - JWT/CSRF, CORS, Rate Limiting
+- 🧠 **AI Search** - Semantic embeddings with pgvector
+- 💾 **Auto-Backup** - Scheduled with retention policies
+- 🎨 **Nebula UI** - Glassmorphism design
 
-## Schnellzugriff
+---
 
-### 📐 Architecture Decision Records (ADR)
-→ [adr/](./adr/)
-- Architekturentscheidungen mit Begründungen
-- Beispiel: `004-repository-structure.md`
-
-### 🎨 WebUI Blueprints
-→ [blueprints/](./blueprints/)
-- Design-Spezifikationen für die WebUI
-- **Hauptdokument:** [Blueprint_WebUI.md](./blueprints/Blueprint_WebUI.md)
-- **Module:**
-  - [Auth](./blueprints/Blueprint_WebUI_Auth.md) - Authentifizierung
-  - [Files](./blueprints/Blueprint_WebUI_Files.md) - Dateiverwaltung
-  - [Backup](./blueprints/Blueprint_WebUI_Backup.md) - Backup-System
-  - [Storage](./blueprints/Blueprint_WebUI_Storage.md) - Speicherverwaltung
-  - [Settings](./blueprints/Blueprint_WebUI_Settings.md) - Einstellungen
-  - [Users](./blueprints/Blueprint_WebUI_Users.md) - Benutzerverwaltung
-  - [Shares](./blueprints/Blueprint_WebUI_Shares.md) - Freigaben
-  - [Profile](./blueprints/Blueprint_WebUI_Profile.md) - Benutzerprofil
-
-### 🗺️ Planung & Roadmaps
-→ [planning/](./planning/)
-- **[MASTER_ROADMAP.md](./planning/MASTER_ROADMAP.md)** - Überblick über aktuelle Phasen und Meilensteine
-- **[AGENT_MATRIX.md](./planning/AGENT_MATRIX.md)** - Agenten-Übersicht, Rollen und Verantwortlichkeiten
-
-### 📋 Policies & Richtlinien
-→ [policies/](./policies/)
-- [orchestrator-collaboration.md](./policies/orchestrator-collaboration.md) - Agent↔Orchestrator Workflow
-- [systemsetup-allowlist.md](./policies/systemsetup-allowlist.md) - SystemSetup Allowlist
-
-### 💻 Development & Reference
-→ [development/](./development/)
-- [DEV_GUIDE.md](./development/DEV_GUIDE.md) - Entwicklungs-Guide
-- [REFERENCE_SNIPPETS.md](./reference/REFERENCE_SNIPPETS.md) - Code-Snippets & Patterns
-
-### 📚 Handbücher
-→ [manuals/](./manuals/)
-- [USER_LOGIN_GUIDE.md](./manuals/USER_LOGIN_GUIDE.md) - Anleitung zur Registrierung und zum Login
-- [PASSWORD-MANAGER.md](./manuals/PASSWORD-MANAGER.md) - Passwort-Manager Dokumentation
-- [EMAIL_TESTING.md](./manuals/EMAIL_TESTING.md) - E-Mail Testing Guide
-
-### 🔮 Vision & Konzepte
-→ [vision/](./vision/)
-- [FUTURE_CONCEPTS.md](./vision/FUTURE_CONCEPTS.md) - Langfristige Ideen und Zukunftsperspektiven
-
-## Weitere Dokumentation
-
-- **Status Reports:** `/status/` - Agent-Status und Phase-Reports (siehe auch `docs/planning/AGENT_MATRIX.md`)
-- **Lessons Learned:** [LESSONS-LEARNED.md](./status/LESSONS-LEARNED.md)
-- **System-Übersicht:** `/NAS_AI_SYSTEM.md`
-- **CVE Checklist:** `/CVE_CHECKLIST.md`
-
-## Navigation
+## Quick Start
 
 ```bash
-# Alle Blueprints anzeigen
-ls docs/blueprints/
+# Start production stack
+cd infrastructure
+docker compose -f docker-compose.prod.yml up -d
 
-# Alle ADRs anzeigen
-ls docs/adr/
-
-# Nach Stichwort suchen
-grep -r "keyword" docs/
+# Access
+# API:   http://localhost:8080
+# WebUI: http://localhost:8080 (via nginx)
+# AI:    http://localhost:5000
 ```
 
 ---
 
-**Letzte Aktualisierung:** 2025-11-21
-**Struktur:** Gemäß `STRUCTURE_PROPOSAL.md` und Konsolidierungsplan
+## Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| **API** | 8080 | Go backend |
+| **WebUI** | 80 | Vite frontend |
+| **AI Agent** | 5000 | Embeddings & search |
+| **Orchestrator** | 9000 | Health monitoring |
+| **PostgreSQL** | 5432 | pgvector database |
+| **Redis** | 6379 | Caching |
+
+---
+
+## Structure
+
+```
+f1406/
+├── infrastructure/       # Docker services (API, WebUI, AI, etc.)
+├── orchestrator/         # Health monitoring service
+├── scripts/              # CLI tools (nas-cli.sh)
+├── docs/                 # Blueprints, policies
+├── contrib/              # Trivy report templates
+└── .archive/             # Historical reports
+```
+
+---
+
+## CLI
+
+```bash
+./scripts/nas-cli.sh
+```
+
+Features: Deployment, Logs, API Testing, Forensics, Database backup.
+
+---
+
+## Documentation
+
+- **API Endpoints:** `API_ENDPOINTS_COMPREHENSIVE.md`
+- **CVE Checklist:** `CVE_CHECKLIST.md`
+- **Blueprints:** `docs/blueprints/`
+
+---
+
+**License:** See LICENSE
