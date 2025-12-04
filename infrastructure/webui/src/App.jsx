@@ -9,6 +9,7 @@ import Backup from "./pages/Backup";
 import Dashboard from "./pages/Dashboard";
 import Search from "./pages/Search";
 import ErrorFallback from "./components/ErrorFallback";
+import logger from "./utils/logger";
 
 export default function App() {
   return (
@@ -19,8 +20,8 @@ export default function App() {
         window.location.href = "/dashboard";
       }}
       onError={(error, errorInfo) => {
-        // Log error to monitoring service (e.g., Sentry)
-        console.error("Uncaught error:", error, errorInfo);
+        // FIX [BUG-JS-010]: Use production-safe logger
+        logger.error("Uncaught error:", error, errorInfo);
       }}
     >
       <BrowserRouter>
