@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Sparkles
 } from "lucide-react";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 // SidebarItem Component for reusable navigation items
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
@@ -67,6 +68,36 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
       navigate("/login", { replace: true, state: { from: location.pathname } });
     }
   }, [location.pathname, navigate]);
+
+  // Keyboard shortcuts (Cmd/Ctrl + K = Search, Cmd/Ctrl + B = Backups)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore if user is typing in input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      switch (e.key.toLowerCase()) {
+        case 'k':
+          e.preventDefault();
+          navigate('/search');
+          break;
+        case 'b':
+          e.preventDefault();
+          navigate('/backups');
+          break;
+        case 'd':
+          e.preventDefault();
+          navigate('/dashboard');
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
 
   const navLinks = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -212,6 +243,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
                 <Bell size={20} />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.6)]"></span>
               </button>
+              <ThemeToggle />
             </div>
           </header>
 

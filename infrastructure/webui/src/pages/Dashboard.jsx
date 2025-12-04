@@ -12,6 +12,7 @@ import {
   Archive,
   Server,
 } from "lucide-react";
+import { DashboardSkeleton } from "../components/Skeleton";
 
 // Glass Card Component
 const GlassCard = ({ children, className = "" }) => (
@@ -72,6 +73,11 @@ export default function Dashboard() {
 
   const isBackupActive = settings?.auto_backup_enabled ?? true;
   const formatPct = (v) => (typeof v === "number" ? `${Math.round(v)}%` : "—");
+
+  // Show skeleton during initial load
+  if (isLoading && !data) {
+    return <DashboardSkeleton />;
+  }
 
   return (
     <div className="space-y-6">

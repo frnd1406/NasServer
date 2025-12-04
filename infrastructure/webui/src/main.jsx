@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import { queryClient } from "./lib/queryClient";
+import { ToastProvider } from "./components/Toast";
+import { ThemeProvider } from "./components/ThemeToggle";
 
 /**
  * React.StrictMode is enabled for development mode.
@@ -24,11 +26,17 @@ import { queryClient } from "./lib/queryClient";
  * ✅ Global ErrorBoundary implemented (react-error-boundary)
  * ✅ Dashboard.jsx: AbortController cleanup (BUG-JS-006 fixed)
  * ✅ All fetch() calls are now properly abortable
+ * ✅ Toast notifications for user feedback
+ * ✅ Theme toggle (dark/light mode)
  */
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <ThemeProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );
