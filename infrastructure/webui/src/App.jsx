@@ -8,6 +8,7 @@ import Register from "./pages/Register";
 import Backup from "./pages/Backup";
 import Dashboard from "./pages/Dashboard";
 import Search from "./pages/Search";
+import Settings from "./pages/Settings";
 import ErrorFallback from "./components/ErrorFallback";
 import logger from "./utils/logger";
 
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="search" element={<Search />} />
             <Route path="metrics" element={<Metrics />} />
             <Route path="backups" element={<Backup />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
