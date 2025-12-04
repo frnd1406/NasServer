@@ -1,73 +1,75 @@
 # Agenten-Matrix & Betriebshandbuch
 
-**Version:** 1.0
-**Datum:** 21.11.2025
-**Status:** AKTIV
+**Version:** 2.0  
+**Updated:** 2025-12-04
 
-## 1. Einleitung
+## Aktive Services
 
-Dieses Dokument ist die alleinige Wahrheitsquelle (Single Source of Truth) für alle Rollen, Verantwortlichkeiten und Betriebsprotokolle der Agenten im NAS.AI-System. Es ersetzt die Dokumente `NAS_AI_AGENT.md`, `AGENT-ROLES-SUMMARY.md` und `nas-agents-documentation.md`. Alle Agenten müssen sich an die hier dargelegten Richtlinien halten.
+| Service | Typ | Port | Status |
+|---------|-----|------|--------|
+| **api** | Go Backend | 8080 | ✅ Aktiv |
+| **webui** | Vite Frontend | 80 | ✅ Aktiv |
+| **postgres** | pgvector DB | 5432 | ✅ Aktiv |
+| **redis** | Cache | 6379 | ✅ Aktiv |
+| **orchestrator** | Go Health Monitor | 9000 | ✅ Aktiv |
+| **monitoring** | Go Metrics Agent | - | ✅ Aktiv |
+| **analysis-agent** | Go Analytics | - | ✅ Aktiv |
+| **pentester-agent** | Go Security | - | ✅ Aktiv |
+| **ai-knowledge-agent** | Python ML | 5000 | ✅ Aktiv |
 
-## 2. Kern-Agenten
+## Service-Verantwortlichkeiten
 
-Die folgenden Agenten sind die einzigen aktiven Agenten im System. Alle anderen, zuvor definierten Agenten gelten als **inaktiv** und sind archiviert.
+| Service | Kernverantwortung |
+|---------|-------------------|
+| **API** | REST Endpoints, Auth, File Management, Backup |
+| **WebUI** | React Frontend, User Interface |
+| **Orchestrator** | Health Checks, Prometheus Metrics, Service Registry |
+| **Monitoring** | System Metrics Collection |
+| **Analysis Agent** | Alert Analysis, Metric Evaluation |
+| **Pentester Agent** | Security Scanning, Header Validation |
+| **AI Knowledge Agent** | Embeddings, Semantic Search, pgvector |
 
-| Agent | Kernverantwortung | Hauptaufgaben |
-|---|---|---|
-| **Orchestrator** | Projektorchestrierung & Koordination | Steuert Entwicklungsphasen, erzwingt Security Gates, koordiniert Agentenaufgaben und überwacht Produktions-Deployments. Fungiert als zentrale Kommandoeinheit. |
-| **APIAgent** | Backend-API-Entwicklung & Sicherheit | Entwickelt und wartet die Go-basierte API, härtet Endpunkte, verwaltet JWT- und WebSocket-Sicherheit und stellt die Dienstintegrität sicher. |
-| **WebUIAgent** | Frontend UI/UX-Entwicklung | Implementiert die React/Vite-basierte WebUI, verwaltet benutzerseitige Authentifizierungsflüsse und entwickelt Echtzeit-UX-Komponenten. |
-| **SystemSetupAgent** | Infrastruktur- & Umgebungskonfiguration | Stellt Kerninfrastruktur bereit (z.B. Monitoring-Stacks), verwaltet Systemkonfigurationen, kümmert sich um die Rotation von Secrets und bereitet die Umgebung für andere Agenten vor. |
-| **NetworkSecurityAgent** | Netzwerkverteidigung & Härtung | Konfiguriert und wartet Firewalls, VPNs, SSL-Zertifikate und Intrusion-Detection-Systeme (z.B. Fail2Ban). |
-| **DocumentationAgent** | Wissensmanagement & Standards | Pflegt dieses Handbuch, verwaltet die `status/`-Verzeichnisstruktur, dokumentiert Richtlinien und stellt sicher, dass alle Artefakte korrekt organisiert sind. |
-| **AnalysisAgent** | Systemanalyse & Problem-Triage | Führt systemweite Analysen durch, identifiziert Richtlinienverstöße sowie Sicherheitsrisiken und liefert detaillierte Problemberichte an den Orchestrator. |
-| **PentesterAgent** | Sicherheitsvalidierung & Penetration Testing | Führt Sicherheitstests durch, validiert die Behebung von Schwachstellen und führt Regressions- sowie Penetrationstests durch, um die Systemresilienz zu gewährleisten. |
+## Entwicklungsrichtlinien
 
-## 3. Inaktive & archivierte Agenten
+### Pflichtlektüre
+1. `README.md` - Quick Start
+2. `NAS_AI_SYSTEM.md` - Architektur
+3. `docs/development/DEV_GUIDE.md` - Setup
 
-Die folgenden Agentenrollen wurden **stillgelegt**, um den Fokus zu schärfen und die Komplexität zu reduzieren. Ihre Verantwortlichkeiten wurden entweder von den Kern-Agenten übernommen oder als außerhalb des aktuellen Projektumfangs liegend eingestuft.
+### Code-Konventionen
+- **Go:** `gofmt`, Error Handling, Context Usage
+- **Python:** PEP8, Type Hints
+- **React:** Functional Components, Hooks
+- **Config:** Environment Variables, keine Hardcodes
 
-- AIKnowledgeAgent
-- BackupAgent
-- ContainerAgent
-- MobileAgent
-- MonitoringAgent
-- ObservabilityAgent
-- PolicyAutomationAgent
-- RAIDConfigAgent
-- ServiceAgent
-- TestAutomationAgent
+### Commit-Format
+```
+type(scope): description
 
-Eine Notiz, die ihre Archivierung bestätigt, befindet sich unter `status/archive/INACTIVE_AGENTS_NOTE.md`.
+feat(api): add /embed endpoint
+fix(auth): resolve JWT refresh bug
+docs(readme): update setup instructions
+chore(deps): upgrade dependencies
+```
 
-## 4. Betriebsprotokolle & Logging-Standards
+## Docker Commands
 
-Alle Agenten müssen diese Regeln ausnahmslos befolgen.
+```bash
+# Alle Services starten
+docker compose -f infrastructure/docker-compose.prod.yml up -d
 
-### 4.1. Pflichtlektüre vor jeder Aufgabe
+# Einzelnen Service neustarten
+docker compose restart api
 
-Vor Beginn einer Arbeit muss jeder Agent die folgenden Dokumente lesen und bestätigen:
-1.  **`NAS_AI_SYSTEM.md`**: Das Master-Dokument für Architektur und Governance.
-2.  **`docs/planning/AGENT_MATRIX.md`**: Dieses Dokument.
-3.  **`docs/security/SECURITY_HANDBOOK.md`**: Die zentrale Richtlinie für Sicherheit und Geheimnisse.
-4.  **`docs/development/DEV_GUIDE.md`**: Die Anleitung für das Entwicklungs-Setup und Beiträge.
+# Logs anzeigen
+docker compose logs -f ai-knowledge-agent
 
-### 4.2. Status-Protokollierung (Logging)
-- **Speicherort:** Alle Statusprotokolle müssen in `status/<AgentName>/` abgelegt werden.
-- **Format:** `NNN_YYYYMMDD_aufgaben-beschreibung.md` (z.B. `001_20251121_firewall-regel-update.md`).
-- **Inhalt:** Jedes Protokoll muss klar angeben:
-    1.  **Ziel:** Das Ziel der Aufgabe.
-    2.  **Analyse:** Erste Einschätzung und Plan.
-    3.  **Ergebnis:** Das Resultat der Arbeit.
-    4.  **Artefakte:** Links zu Code, Konfigurationen oder anderen Nachweisen.
-    5.  **Blocker:** Alle aufgetretenen Probleme.
-    6.  **Nächste Schritte:** Übergabe an einen anderen Agenten oder Abschluss.
+# Health Check
+curl http://localhost:8080/health
+curl http://localhost:5000/health
+curl http://localhost:9000/health
+```
 
-### 4.3. Arbeitsablauf
-1.  **Aufgabe erhalten:** Eine Aufgabe vom Orchestrator erhalten.
-2.  **Analysieren:** Eine detaillierte Analyse des aktuellen Zustands, der Risiken und der Anforderungen durchführen.
-3.  **Planen:** Eine TODO-Liste oder einen schrittweisen Plan erstellen und diesen in einer neuen Statusdatei dokumentieren.
-4.  **Ausführen:** Den Plan umsetzen.
-5.  **Berichten:** Die Statusdatei mit dem Ergebnis und den Artefakten abschließen.
+---
 
-**Eine Abweichung von diesem Arbeitsablauf ist nicht gestattet.**
+**Maintained by:** NAS.AI Team
