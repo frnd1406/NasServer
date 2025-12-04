@@ -23,16 +23,16 @@ type HealthResponse struct {
 
 // ServiceStatus tracks service health over time
 type ServiceStatus struct {
-	mu              sync.RWMutex // CONCURRENCY FIX: Protects all fields from concurrent access
-	Name            string
-	URL             string
-	Healthy         bool
-	LastCheck       time.Time
-	LastHealthy     time.Time
+	mu               sync.RWMutex // CONCURRENCY FIX: Protects all fields from concurrent access
+	Name             string
+	URL              string
+	Healthy          bool
+	LastCheck        time.Time
+	LastHealthy      time.Time
 	ConsecutiveFails int
-	TotalChecks     int
-	TotalFailures   int
-	Uptime          float64
+	TotalChecks      int
+	TotalFailures    int
+	Uptime           float64
 }
 
 // Snapshot returns a thread-safe copy of the ServiceStatus
@@ -41,15 +41,15 @@ func (s *ServiceStatus) Snapshot() ServiceStatus {
 	defer s.mu.RUnlock()
 
 	return ServiceStatus{
-		Name:            s.Name,
-		URL:             s.URL,
-		Healthy:         s.Healthy,
-		LastCheck:       s.LastCheck,
-		LastHealthy:     s.LastHealthy,
+		Name:             s.Name,
+		URL:              s.URL,
+		Healthy:          s.Healthy,
+		LastCheck:        s.LastCheck,
+		LastHealthy:      s.LastHealthy,
 		ConsecutiveFails: s.ConsecutiveFails,
-		TotalChecks:     s.TotalChecks,
-		TotalFailures:   s.TotalFailures,
-		Uptime:          s.Uptime,
+		TotalChecks:      s.TotalChecks,
+		TotalFailures:    s.TotalFailures,
+		Uptime:           s.Uptime,
 	}
 }
 
@@ -97,13 +97,10 @@ func (o *Orchestrator) CheckHealth(ctx context.Context, service *ServiceStatus) 
 	}
 
 	resp, err := o.client.Do(req)
-	// FIX [BUG-GO-005]: Close response body even on error to prevent connection leak
-	if resp != nil {
-		defer resp.Body.Close()
-	}
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -160,10 +157,18 @@ func (o *Orchestrator) checkAllServices(ctx context.Context) {
 	}
 	o.mu.RUnlock()
 
-	// Check all services without holding the lock
+	// PERFORMANCE FIX: Check all services in parallel using WaitGroup
+	// This reduces worst-case check time from N*5s (sequential) to 5s (parallel)
+	var wg sync.WaitGroup
 	for _, service := range servicesCopy {
-		o.checkService(ctx, service)
+		wg.Add(1)
+		go func(s *ServiceStatus) {
+			defer wg.Done()
+			o.checkService(ctx, s)
+		}(service)
 	}
+	wg.Wait()
+
 	o.logSummary()
 }
 
@@ -287,6 +292,9 @@ func (o *Orchestrator) PrintStatus() {
 }
 
 func main() {
+	// Load configuration
+	cfg := LoadConfig()
+
 	// Setup logger
 	opts := &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -302,27 +310,17 @@ func main() {
 	orch := NewOrchestrator(logger)
 
 	// Create service registry
-	registryPath := os.Getenv("REGISTRY_PATH")
-	if registryPath == "" {
-		registryPath = "./data/registry.json"
-	}
 	os.MkdirAll("./data", 0755)
 
-	registry, err := NewServiceRegistry(registryPath, logger)
+	registry, err := NewServiceRegistry(cfg.RegistryPath, logger)
 	if err != nil {
 		logger.Error("Failed to create registry", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
-	// Register services from registry or defaults
-	apiURL := os.Getenv("API_URL")
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
-	}
-
 	// Register default service
-	registry.Register("nas-api", apiURL+"/health", []string{"core", "api"}, map[string]string{
-		"type": "backend",
+	registry.Register("nas-api", cfg.APIURL+"/health", []string{"core", "api"}, map[string]string{
+		"type":     "backend",
 		"language": "go",
 	})
 
@@ -341,23 +339,18 @@ func main() {
 
 	// Start HTTP API server
 	apiServer := NewAPIServer(orch, registry, logger)
-	apiAddr := os.Getenv("API_ADDR")
-	if apiAddr == "" {
-		apiAddr = ":9000"
-	}
 	go func() {
-		if err := apiServer.Start(apiAddr); err != nil {
+		if err := apiServer.Start(cfg.APIAddr); err != nil {
 			logger.Error("API server failed", slog.String("error", err.Error()))
 		}
 	}()
 
 	// Start health check loop in goroutine
-	checkInterval := 30 * time.Second
-	go orch.HealthCheckLoop(ctx, checkInterval)
+	go orch.HealthCheckLoop(ctx, cfg.CheckInterval)
 
 	// Status printer goroutine
 	go func() {
-		statusTicker := time.NewTicker(5 * time.Minute)
+		statusTicker := time.NewTicker(cfg.StatusInterval)
 		defer statusTicker.Stop()
 
 		for {

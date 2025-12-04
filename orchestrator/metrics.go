@@ -21,10 +21,13 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var sb strings.Builder
 
+	// CONCURRENCY FIX: Get thread-safe copy of services to prevent race condition
+	services := pm.orch.GetServiceStatus()
+
 	// Health status metrics
 	sb.WriteString("# HELP orchestrator_service_healthy Whether service is healthy (1) or not (0)\n")
 	sb.WriteString("# TYPE orchestrator_service_healthy gauge\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		healthyValue := 0
 		if service.Healthy {
 			healthyValue = 1
@@ -36,7 +39,7 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Uptime percentage
 	sb.WriteString("# HELP orchestrator_service_uptime_percent Service uptime percentage\n")
 	sb.WriteString("# TYPE orchestrator_service_uptime_percent gauge\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		sb.WriteString(fmt.Sprintf("orchestrator_service_uptime_percent{service=\"%s\"} %.2f\n",
 			service.Name, service.Uptime))
 	}
@@ -44,7 +47,7 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Total checks
 	sb.WriteString("# HELP orchestrator_service_checks_total Total number of health checks performed\n")
 	sb.WriteString("# TYPE orchestrator_service_checks_total counter\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		sb.WriteString(fmt.Sprintf("orchestrator_service_checks_total{service=\"%s\"} %d\n",
 			service.Name, service.TotalChecks))
 	}
@@ -52,7 +55,7 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Total failures
 	sb.WriteString("# HELP orchestrator_service_failures_total Total number of failed health checks\n")
 	sb.WriteString("# TYPE orchestrator_service_failures_total counter\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		sb.WriteString(fmt.Sprintf("orchestrator_service_failures_total{service=\"%s\"} %d\n",
 			service.Name, service.TotalFailures))
 	}
@@ -60,7 +63,7 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Consecutive failures
 	sb.WriteString("# HELP orchestrator_service_consecutive_failures Current consecutive failures\n")
 	sb.WriteString("# TYPE orchestrator_service_consecutive_failures gauge\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		sb.WriteString(fmt.Sprintf("orchestrator_service_consecutive_failures{service=\"%s\"} %d\n",
 			service.Name, service.ConsecutiveFails))
 	}
@@ -68,7 +71,7 @@ func (pm *PrometheusMetrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Last check timestamp
 	sb.WriteString("# HELP orchestrator_service_last_check_timestamp Unix timestamp of last health check\n")
 	sb.WriteString("# TYPE orchestrator_service_last_check_timestamp gauge\n")
-	for _, service := range pm.orch.services {
+	for _, service := range services {
 		sb.WriteString(fmt.Sprintf("orchestrator_service_last_check_timestamp{service=\"%s\"} %d\n",
 			service.Name, service.LastCheck.Unix()))
 	}

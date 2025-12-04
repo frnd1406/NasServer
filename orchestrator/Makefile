@@ -1,7 +1,7 @@
 .PHONY: build run stop clean test
 
 build:
-	go build -o bin/orchestrator orchestrator_loop.go
+	go build -o bin/orchestrator .
 
 run: build
 	./bin/orchestrator
