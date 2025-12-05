@@ -50,19 +50,14 @@ services:
       GIN_MODE: release
       LOG_LEVEL: info
       NODE_ENV: production
-      JWT_SECRET: "${JWT_SECRET}"
-      MONITORING_TOKEN: "${MONITORING_TOKEN}"
-      DATABASE_URL: "postgres://nas_user:${POSTGRES_PASSWORD}@postgres:5432/nas_db?sslmode=disable"
       REDIS_URL: "redis:6379"
-      CORS_ORIGINS: "${CORS_ORIGINS}"
-      FRONTEND_URL: "${FRONTEND_URL}"
       EMAIL_FROM: "nas.ai@example.com"
       RATE_LIMIT_PER_MIN: 100
-      # AI Service URL - connects to AI agent on host network
-      AI_SERVICE_URL: "http://192.168.178.181:5000"
-      # Ollama LLM for RAG
-      OLLAMA_URL: "http://192.168.178.181:11434"
-      LLM_MODEL: "qwen2.5:3b"
+      # AI Service URL - connects to AI agent via Docker network
+      AI_SERVICE_URL: "${AI_SERVICE_URL:-http://ai-knowledge-agent:5000}"
+      # Ollama LLM for RAG (runs on host)
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      LLM_MODEL: "${LLM_MODEL:-qwen2.5:3b}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,13 +151,12 @@ services:
       dockerfile: Dockerfile
     image: nas-ai-knowledge-agent:1.0.0
     container_name: nas-ai-knowledge-agent
-    network_mode: host # Direct access to localhost:11434 (Ollama)
     env_file:
       - ./.env.prod
     environment:
-      # Database Configuration (use localhost since network_mode: host)
-      PGHOST: 127.0.0.1
-      PGPORT: 5433
+      # Database Configuration (container network)
+      PGHOST: postgres
+      PGPORT: 5432
       PGDATABASE: nas_db
       PGUSER: nas_user
       PGPASSWORD: "${POSTGRES_PASSWORD}"
@@ -172,7 +166,7 @@ services:
       # AI Model Configuration - Ollama Embeddings (Raspberry Pi optimized)
       AI_MODEL_TYPE: ollama
       AI_MODEL_NAME: mxbai-embed-large
-      OLLAMA_BASE_URL: http://localhost:11434
+      OLLAMA_BASE_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
       EMBEDDING_DIM: 1024
 
       # Service Configuration
@@ -183,8 +177,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - nas-network
+      - agent-network
     volumes:
-      - nas_data:/mnt/data
+      - /mnt/data:/mnt/data # Bind mount to host /mnt/data
     deploy:
       resources:
         limits:

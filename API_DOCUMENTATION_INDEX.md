@@ -4,38 +4,25 @@ This directory contains comprehensive API documentation for the NAS.AI Agent Orc
 
 ## Documentation Files
 
-### 1. **API_ENDPOINTS_SUMMARY.md** (START HERE)
-   - Executive summary of all endpoints
-   - Service architecture overview with diagram
-   - Key features by domain
-   - Authentication methods
-   - Database schema
-   - Future planned endpoints
-   - **Best for:** Getting an overall understanding of the API
+### Primary Documentation (Single Source of Truth)
 
-### 2. **API_ENDPOINTS_COMPREHENSIVE.md**
-   - Detailed documentation for each endpoint
-   - Complete request/response examples
-   - Authentication requirements
-   - Query parameters and request bodies
-   - Service specifications table
-   - WebSocket topics for real-time events
-   - **Best for:** Deep dive into specific endpoints
+#### **API_ENDPOINTS_COMPREHENSIVE.md** ⭐ (START HERE)
+- Complete API documentation
+- Detailed request/response examples  
+- Authentication requirements
+- Query parameters and request bodies
+- Service specifications table
+- WebSocket topics for real-time events
+- **Use for:** All API integration and development
 
-### 3. **API_ENDPOINTS_QUICK_REFERENCE.txt**
-   - Quick lookup table format
-   - Organized by endpoint category
-   - Service specifications matrix
-   - Error codes reference
-   - Configuration variables list
-   - **Best for:** Quick navigation and reference
+---
 
-### 4. **API_ENDPOINTS.md** (Original)
-   - German-language documentation
-   - Basic endpoint overview
-   - Authentication examples
-   - Backup and storage endpoints
-   - **Best for:** German-speaking developers
+### Archived Documentation
+
+The following files have been consolidated and moved to `.archive/deprecated-docs/`:
+- `API_ENDPOINTS.md` (German, superseded)
+- `API_ENDPOINTS_SUMMARY.md` (merged into comprehensive)
+- `API_ENDPOINTS_QUICK_REFERENCE.txt` (merged into comprehensive)
 
 ---
 

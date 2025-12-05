@@ -241,3 +241,73 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newPassword
 	r.logger.WithField("user_id", userID).Info("User password updated successfully")
 	return nil
 }
+
+// GetAllUsers returns all users for admin management
+func (r *UserRepository) GetAllUsers(ctx context.Context) ([]models.User, error) {
+	query := `
+		SELECT id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
+		FROM users
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		r.logger.WithError(err).Error("Failed to query users")
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]models.User, 0)
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Email,
+			&user.PasswordHash,
+			&user.Role,
+			&user.EmailVerified,
+			&user.VerifiedAt,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			r.logger.WithError(err).Warn("Failed to scan user row")
+			continue
+		}
+		// Clear password hash for security
+		user.PasswordHash = ""
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// UpdateRole updates a user's role (admin only)
+func (r *UserRepository) UpdateRole(ctx context.Context, userID, role string) error {
+	query := `
+		UPDATE users
+		SET role = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	result, err := r.db.ExecContext(ctx, query, role, userID)
+	if err != nil {
+		r.logger.WithError(err).Error("Failed to update user role")
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	r.logger.WithFields(logrus.Fields{
+		"user_id": userID,
+		"role":    role,
+	}).Info("User role updated successfully")
+	return nil
+}

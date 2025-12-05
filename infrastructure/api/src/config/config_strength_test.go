@@ -24,6 +24,7 @@ func TestValidateSecrets(t *testing.T) {
 				BackupSchedule:       "0 3 * * *",
 				BackupRetentionCount: 7,
 				BackupStoragePath:    "/mnt/backups",
+				AIServiceURL:         "http://ai-knowledge-agent:5000",
 			},
 			expectError: false,
 		},

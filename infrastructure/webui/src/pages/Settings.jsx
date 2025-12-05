@@ -16,7 +16,16 @@ import {
     Check,
     AlertCircle,
     Loader2,
-    ChevronRight
+    ChevronRight,
+    Users,
+    Activity,
+    Database,
+    AlertTriangle,
+    RefreshCw,
+    Power,
+    PowerOff,
+    Globe,
+    FileText
 } from "lucide-react";
 import { useTheme } from "../components/ThemeToggle";
 import { useToast } from "../components/Toast";
@@ -150,6 +159,7 @@ export default function Settings() {
     const tabs = [
         { id: "profile", label: "Profil", icon: User },
         { id: "appearance", label: "Erscheinung", icon: Palette },
+        { id: "admin", label: "Admin", icon: Shield, adminOnly: true },
         { id: "about", label: "Über", icon: Info }
     ];
 
@@ -174,8 +184,8 @@ export default function Settings() {
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
                                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive
-                                                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                                                : "text-slate-400 hover:text-white hover:bg-white/5"
+                                            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                                            : "text-slate-400 hover:text-white hover:bg-white/5"
                                             }`}
                                     >
                                         <Icon size={20} />
@@ -352,6 +362,11 @@ export default function Settings() {
                         </GlassCard>
                     )}
 
+                    {/* Admin Section */}
+                    {activeTab === "admin" && (
+                        <AdminTabContent />
+                    )}
+
                     {/* About Section */}
                     {activeTab === "about" && (
                         <div className="space-y-6">
@@ -445,3 +460,202 @@ export default function Settings() {
         </div>
     );
 }
+
+// Admin Tab Content Component
+function AdminTabContent() {
+    const toast = useToast();
+    const [loading, setLoading] = useState(true);
+    const [settings, setSettings] = useState({
+        rate_limit_per_min: 100,
+        maintenance_mode: false,
+        session_timeout_mins: 60,
+        cors_origins: []
+    });
+    const [systemStatus, setSystemStatus] = useState(null);
+    const [users, setUsers] = useState([]);
+
+    useEffect(() => {
+        loadAdminData();
+    }, []);
+
+    const loadAdminData = async () => {
+        setLoading(true);
+        try {
+            const [settingsData, statusData, usersData] = await Promise.all([
+                apiRequest("/api/v1/admin/settings", { method: "GET" }),
+                apiRequest("/api/v1/admin/status", { method: "GET" }),
+                apiRequest("/api/v1/admin/users", { method: "GET" })
+            ]);
+            setSettings(settingsData);
+            setSystemStatus(statusData);
+            setUsers(usersData.users || []);
+        } catch (err) {
+            toast.error("Admin-Daten konnten nicht geladen werden");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const toggleMaintenanceMode = async () => {
+        try {
+            const result = await apiRequest("/api/v1/admin/maintenance", {
+                method: "POST",
+                body: JSON.stringify({ enabled: !settings.maintenance_mode })
+            });
+            setSettings({ ...settings, maintenance_mode: result.maintenance_mode });
+            toast.success(result.maintenance_mode ? "Wartungsmodus aktiviert" : "Wartungsmodus deaktiviert");
+        } catch (err) {
+            toast.error("Fehler beim Umschalten");
+        }
+    };
+
+    const updateUserRole = async (userId, newRole) => {
+        try {
+            await apiRequest(`/api/v1/admin/users/${userId}/role`, {
+                method: "PUT",
+                body: JSON.stringify({ role: newRole })
+            });
+            setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+            toast.success("Rolle aktualisiert");
+        } catch (err) {
+            toast.error("Fehler beim Aktualisieren");
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 size={48} className="text-violet-400 animate-spin" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* System Status */}
+            <GlassCard>
+                <SectionHeader icon={Activity} title="System Status" description="Live-Systemmetriken" />
+                {systemStatus && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-sm">Uptime</p>
+                            <p className="text-white font-mono">{systemStatus.uptime}</p>
+                        </div>
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-sm">Go Version</p>
+                            <p className="text-white font-mono">{systemStatus.go_version}</p>
+                        </div>
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-sm">Goroutines</p>
+                            <p className="text-white font-mono">{systemStatus.num_goroutines}</p>
+                        </div>
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-sm">Memory</p>
+                            <p className="text-white font-mono">{systemStatus.memory_alloc_mb?.toFixed(2)} MB</p>
+                        </div>
+                    </div>
+                )}
+            </GlassCard>
+
+            {/* Maintenance Mode */}
+            <GlassCard>
+                <SectionHeader icon={AlertTriangle} title="Wartungsmodus" description="System für Wartungsarbeiten sperren" />
+                <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
+                    <div className="flex items-center gap-3">
+                        {settings.maintenance_mode ? (
+                            <PowerOff size={24} className="text-amber-400" />
+                        ) : (
+                            <Power size={24} className="text-emerald-400" />
+                        )}
+                        <div>
+                            <p className="text-white font-medium">
+                                {settings.maintenance_mode ? "Wartungsmodus AKTIV" : "System online"}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={toggleMaintenanceMode}
+                        className={`px-4 py-2 rounded-xl font-medium transition-all ${settings.maintenance_mode
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            }`}
+                    >
+                        {settings.maintenance_mode ? "Deaktivieren" : "Aktivieren"}
+                    </button>
+                </div>
+            </GlassCard>
+
+            {/* User Management */}
+            <GlassCard>
+                <SectionHeader icon={Users} title="Benutzerverwaltung" description="Benutzer und Rollen verwalten" />
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead>
+                            <tr className="border-b border-white/10">
+                                <th className="text-left py-3 px-4 text-slate-400 font-medium">Benutzer</th>
+                                <th className="text-left py-3 px-4 text-slate-400 font-medium">E-Mail</th>
+                                <th className="text-left py-3 px-4 text-slate-400 font-medium">Rolle</th>
+                                <th className="text-right py-3 px-4 text-slate-400 font-medium">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {users.map((user) => (
+                                <tr key={user.id} className="border-b border-white/5 hover:bg-white/5">
+                                    <td className="py-3 px-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                                                {user.username?.charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-white font-medium">{user.username}</span>
+                                        </div>
+                                    </td>
+                                    <td className="py-3 px-4 text-slate-400">{user.email}</td>
+                                    <td className="py-3 px-4">
+                                        <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.role === "admin"
+                                                ? "bg-violet-500/20 text-violet-400"
+                                                : "bg-slate-500/20 text-slate-400"
+                                            }`}>
+                                            {user.role}
+                                        </span>
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                        <select
+                                            value={user.role}
+                                            onChange={(e) => updateUserRole(user.id, e.target.value)}
+                                            className="px-2 py-1 bg-slate-800 border border-white/10 rounded-lg text-white text-sm"
+                                        >
+                                            <option value="user">User</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </GlassCard>
+
+            {/* DB Pool Status */}
+            {systemStatus?.db_pool && (
+                <GlassCard>
+                    <SectionHeader icon={Database} title="Database Pool" description="Verbindungsstatus" />
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                            <p className="text-slate-400 text-sm">Connections</p>
+                            <p className="text-white font-mono text-xl">{systemStatus.db_pool.open_connections}</p>
+                        </div>
+                        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                            <p className="text-slate-400 text-sm">In Use</p>
+                            <p className="text-white font-mono text-xl">{systemStatus.db_pool.in_use}</p>
+                        </div>
+                        <div className="p-3 bg-slate-500/10 border border-slate-500/20 rounded-lg">
+                            <p className="text-slate-400 text-sm">Idle</p>
+                            <p className="text-white font-mono text-xl">{systemStatus.db_pool.idle}</p>
+                        </div>
+                    </div>
+                </GlassCard>
+            )}
+        </div>
+    );
+}
+

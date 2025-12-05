@@ -29,6 +29,18 @@ test-coverage: ## Run tests with coverage (min 80%)
 	@go tool cover -func=coverage.out | grep total | awk '{print "Coverage: " $$3}'
 	@echo "Coverage report: coverage.html"
 
+test-coverage-ci: ## Run tests with coverage for CI (exits non-zero if <80%)
+	@echo "Running tests with coverage (CI mode)..."
+	@go test -coverprofile=coverage.out -covermode=atomic ./...
+	@go tool cover -func=coverage.out | tee coverage.txt
+	@COVERAGE=$$(go tool cover -func=coverage.out | grep total | awk '{print $$3}' | tr -d '%'); \
+	if [ "$${COVERAGE%.*}" -lt 80 ]; then \
+		echo "❌ Coverage $${COVERAGE}% is below 80% threshold"; \
+		exit 1; \
+	else \
+		echo "✅ Coverage $${COVERAGE}% meets 80% threshold"; \
+	fi
+
 test-security: ## Run security tests only
 	@echo "Running security tests..."
 	@go test -v ./tests/security/...

@@ -285,6 +285,32 @@ func main() {
 		)
 	}
 
+	// === ADMIN ROUTES (requires JWT + CSRF + Admin role) ===
+	adminV1 := r.Group("/api/v1/admin")
+	adminV1.Use(
+		middleware.AuthMiddleware(jwtService, redis, logger),
+		middleware.CSRFMiddleware(redis, logger),
+		middleware.AdminOnly(userRepo, logger),
+	)
+	{
+		// Admin settings
+		adminV1.GET("/settings", handlers.GetAdminSettingsHandler(cfg, logger))
+		adminV1.PUT("/settings", handlers.UpdateAdminSettingsHandler(cfg, settingsRepo, logger))
+
+		// System status
+		adminV1.GET("/status", handlers.SystemStatusHandler(db, logger))
+
+		// User management
+		adminV1.GET("/users", handlers.UserListHandler(userRepo, logger))
+		adminV1.PUT("/users/:id/role", handlers.UpdateUserRoleHandler(userRepo, logger))
+
+		// Maintenance mode
+		adminV1.POST("/maintenance", handlers.ToggleMaintenanceModeHandler(logger))
+
+		// Audit logs
+		adminV1.GET("/audit-logs", handlers.AuditLogHandler(db, logger))
+	}
+
 	// Create HTTP server
 	secureHandler := middleware.SecureHeaders(r)
 
