@@ -472,6 +472,57 @@ def rag_query():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/delete", methods=["POST"])
+def delete_embeddings():
+    """
+    Delete embeddings for a specific file from the database.
+    Prevents ghost knowledge by removing vector data when files are deleted.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Missing JSON payload"}), 400
+
+        file_id = data.get("file_id")
+        file_path = data.get("file_path")
+
+        # Support deletion by either file_id or file_path
+        if not file_id and not file_path:
+            return jsonify({"error": "Either 'file_id' or 'file_path' is required"}), 400
+
+        logger.info("Deleting embeddings for file_id=%s, file_path=%s", file_id, file_path)
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                if file_id:
+                    cur.execute("DELETE FROM file_embeddings WHERE file_id = %s", (file_id,))
+                else:
+                    cur.execute("DELETE FROM file_embeddings WHERE file_path = %s", (file_path,))
+
+                deleted_count = cur.rowcount
+                conn.commit()
+
+        if deleted_count > 0:
+            logger.info("Deleted %d embedding(s) for file_id=%s, file_path=%s", deleted_count, file_id, file_path)
+            return jsonify({
+                "status": "success",
+                "deleted_count": deleted_count,
+                "file_id": file_id,
+                "file_path": file_path
+            })
+        else:
+            logger.warning("No embeddings found for file_id=%s, file_path=%s", file_id, file_path)
+            return jsonify({
+                "status": "not_found",
+                "deleted_count": 0,
+                "message": "No embeddings found for this file"
+            }), 404
+
+    except Exception as e:
+        logger.error("Delete error: %s", str(e), exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 def main():
     check_ollama_health()
     init_db_pool()

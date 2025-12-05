@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { apiRequest } from '../lib/api';
 
 const ChatInterface = () => {
     const [messages, setMessages] = useState([
@@ -36,20 +37,10 @@ const ChatInterface = () => {
         setIsLoading(true);
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`/api/v1/ai/ask?q=${encodeURIComponent(userMessage.content)}`, {
-                method: 'GET', // AskHandler uses GET with query param
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+            // FIX: Use apiRequest for consistent auth token handling
+            const data = await apiRequest(`/api/v1/ask?q=${encodeURIComponent(userMessage.content)}`, {
+                method: 'GET'
             });
-
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
 
             const aiMessage = {
                 role: 'assistant',

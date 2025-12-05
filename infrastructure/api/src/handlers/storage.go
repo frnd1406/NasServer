@@ -98,6 +98,63 @@ func notifyAIAgent(filePath, fileID, mimeType string, logger *logrus.Logger) {
 	}()
 }
 
+// notifyAIAgentDelete sends a fire-and-forget deletion notification to the AI knowledge agent
+// This prevents "ghost knowledge" by removing embeddings when files are deleted
+func notifyAIAgentDelete(filePath, fileID string, logger *logrus.Logger) {
+	go func() {
+		payload := map[string]string{
+			"file_path": filePath,
+			"file_id":   fileID,
+		}
+
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to marshal AI agent delete payload")
+			return
+		}
+
+		// AI agent delete endpoint
+		aiAgentURL := "http://ai-knowledge-agent:5000/delete"
+
+		req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			logger.WithError(err).Warn("Failed to create AI agent delete request")
+			return
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"url":       aiAgentURL,
+				"file_path": filePath,
+				"file_id":   fileID,
+				"error":     err.Error(),
+			}).Warn("Failed to notify AI agent of deletion")
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			logger.WithFields(logrus.Fields{
+				"file_path": filePath,
+				"file_id":   fileID,
+			}).Info("AI agent deletion triggered successfully")
+		} else {
+			logger.WithFields(logrus.Fields{
+				"status_code": resp.StatusCode,
+				"file_path":   filePath,
+				"file_id":     fileID,
+			}).Warn("AI agent delete returned non-2xx status")
+		}
+	}()
+}
+
 func handleStorageError(c *gin.Context, err error, logger *logrus.Logger, requestID string) {
 	status := http.StatusBadRequest
 	message := "storage operation failed"
@@ -221,10 +278,19 @@ func StorageDeleteHandler(storage *services.StorageService, logger *logrus.Logge
 			return
 		}
 
+		// Extract fileID for AI agent notification (before deletion!)
+		fileID := filepath.Base(path)
+		// Construct full path for AI agent (assuming /mnt/data base path)
+		fullPath := filepath.Join("/mnt/data", path)
+
 		if err := storage.Delete(path); err != nil {
 			handleStorageError(c, err, logger, requestID)
 			return
 		}
+
+		// Notify AI agent to delete embeddings (prevents ghost knowledge)
+		// This happens AFTER successful deletion from filesystem
+		notifyAIAgentDelete(fullPath, fileID, logger)
 
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 	}

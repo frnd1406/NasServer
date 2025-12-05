@@ -135,15 +135,22 @@ services:
 
   ai-knowledge-agent:
     build:
-      context: ./ai-knowledge-agent
+      context: ./ai_knowledge_agent
       dockerfile: Dockerfile
     container_name: nas-ai-knowledge-agent
     environment:
       DATABASE_URL: "postgres://nas_user:nas_dev_password@postgres:5432/nas_db"
+      PGHOST: "postgres"
+      PGPORT: "5432"
+      PGDATABASE: "nas_db"
+      PGUSER: "nas_user"
+      PGPASSWORD: "nas_dev_password"
       MODEL_NAME: "sentence-transformers/all-MiniLM-L6-v2"
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - nas_data:/mnt/data
     deploy:
       resources:
         limits:
