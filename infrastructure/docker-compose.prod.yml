@@ -163,10 +163,10 @@ services:
       DB_POOL_MIN: 1
       DB_POOL_MAX: 10
 
-      # AI Model Configuration - Ollama Embeddings (Raspberry Pi optimized)
-      AI_MODEL_TYPE: ollama
-      AI_MODEL_NAME: mxbai-embed-large
-      OLLAMA_BASE_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      # Ollama Configuration - 1024D mxbai-embed-large
+      OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
+      EMBEDDING_MODEL: "mxbai-embed-large"
+      LLM_MODEL: "llama3.2"
       EMBEDDING_DIM: 1024
 
       # Service Configuration
