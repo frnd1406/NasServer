@@ -100,6 +100,10 @@ func LoadConfigWithViper() (*Config, error) {
 
 		// AI/semantic search
 		AIServiceURL: v.GetString("ai_service_url"),
+
+		// LLM for RAG
+		OllamaURL: v.GetString("ollama_url"),
+		LLMModel:  v.GetString("llm_model"),
 	}
 
 	// Build DatabaseURL if not provided
@@ -163,6 +167,10 @@ func setDefaults(v *viper.Viper) {
 
 	// AI agent default
 	v.SetDefault("ai_service_url", "http://ai-knowledge-agent:5000")
+
+	// LLM for RAG
+	v.SetDefault("ollama_url", "http://localhost:11434")
+	v.SetDefault("llm_model", "qwen2.5:3b")
 }
 
 // bindEnvVars explicitly binds environment variables to config keys
@@ -212,6 +220,10 @@ func bindEnvVars(v *viper.Viper) {
 
 	// AI agent
 	_ = v.BindEnv("ai_service_url", "AI_SERVICE_URL")
+
+	// LLM for RAG
+	_ = v.BindEnv("ollama_url", "OLLAMA_URL")
+	_ = v.BindEnv("llm_model", "LLM_MODEL")
 }
 
 // validateRequired validates that all required configuration fields are present

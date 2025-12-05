@@ -234,6 +234,7 @@ func main() {
 		v1.POST("/system/alerts", handlers.SystemAlertCreateHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts/:id/resolve", handlers.SystemAlertResolveHandler(systemAlertsRepo, logger))
 		v1.GET("/search", handlers.SearchHandler(db, cfg.AIServiceURL, aiHTTPClient, logger))
+		v1.GET("/ask", handlers.AskHandler(db, cfg.AIServiceURL, cfg.OllamaURL, cfg.LLMModel, nil, logger))
 	}
 
 	settingsV1 := v1.Group("/system")

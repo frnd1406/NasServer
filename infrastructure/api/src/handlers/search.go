@@ -26,11 +26,17 @@ type searchResult struct {
 	Similarity float64 `json:"similarity"`
 }
 
-// SearchHandler handles semantic search queries using the AI knowledge agent.
+// SearchHandler handles advanced hybrid search combining:
+// - Semantic similarity (AI embeddings)
+// - Full-text keyword matching
+// - Per-word match counting with frequency bonus
+// - Exact phrase matching
+// - Filename matching
+// - Normalized scoring (0-100%)
 func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client, logger *logrus.Logger) gin.HandlerFunc {
 	client := httpClient
 	if client == nil {
-		client = &http.Client{Timeout: 8 * time.Second}
+		client = &http.Client{Timeout: 15 * time.Second}
 	}
 	baseURL := strings.TrimRight(aiServiceURL, "/")
 
@@ -48,24 +54,129 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 			return
 		}
 
-		// Convert embedding float64 slice to pgvector format string
-		// pgvector requires format: '[0.1,0.2,0.3]'
+		// Convert embedding to pgvector format
 		parts := make([]string, len(embedding))
 		for i, v := range embedding {
 			parts[i] = strconv.FormatFloat(v, 'f', -1, 64)
 		}
 		embeddingStr := "[" + strings.Join(parts, ",") + "]"
 
+		// Prepare search terms
+		words := strings.Fields(strings.ToLower(query))
+		wordCount := len(words)
+
+		// Build queries
+		tsQueryOr := strings.Join(words, " | ") // Any word matches
+
+		// Build LIKE patterns for each word (for counting individual matches)
+		// We'll pass all words as a single array-like parameter
+		wordsForLike := strings.Join(words, "|")
+
+		// Advanced Hybrid Search Query - NATURAL LANGUAGE OPTIMIZED
+		// Scoring breakdown:
+		// - Semantic score:  0.0 - 0.80 (80% max) - AI understands meaning
+		// - All words found: 0.0 - 0.10 (10% bonus)
+		// - Per-word matches: 0.0 - 0.05 (5% based on % of words found)
+		// - Exact phrase:    0.0 - 0.05 (5% bonus)
+		// - Filename match:  0.0 - 0.05 (5% bonus)
+		// Total possible: ~100%
 		rows, err := db.QueryContext(c.Request.Context(), `
-			SELECT file_path, content, 1 - (embedding <=> $1::vector) as similarity
-			FROM file_embeddings
-			WHERE file_path LIKE '/mnt/data/%'          -- 🔒 only user data
-			  AND file_path NOT LIKE '%/.trash/%'       -- 🗑️ ignore trash
-			ORDER BY embedding <=> $1::vector
+			WITH search_words AS (
+				SELECT unnest(string_to_array($4::text, '|')) as word
+			),
+			word_matches AS (
+				SELECT 
+					fe.file_path,
+					fe.content,
+					fe.embedding,
+					COUNT(DISTINCT sw.word) as matched_word_count,
+					-- Count total occurrences of all search words
+					SUM(
+						(length(lower(fe.content)) - length(replace(lower(fe.content), sw.word, ''))) 
+						/ GREATEST(length(sw.word), 1)
+					) as total_word_occurrences
+				FROM file_embeddings fe
+				CROSS JOIN search_words sw
+				WHERE fe.file_path LIKE '/mnt/data/%'
+				  AND fe.file_path NOT LIKE '%/.trash/%'
+				  AND lower(fe.content) LIKE '%' || sw.word || '%'
+				GROUP BY fe.file_path, fe.content, fe.embedding
+			),
+			all_docs AS (
+				SELECT 
+					file_path,
+					content,
+					embedding,
+					0 as matched_word_count,
+					0 as total_word_occurrences
+				FROM file_embeddings
+				WHERE file_path LIKE '/mnt/data/%'
+				  AND file_path NOT LIKE '%/.trash/%'
+				  AND file_path NOT IN (SELECT file_path FROM word_matches)
+			),
+			combined AS (
+				SELECT * FROM word_matches
+				UNION ALL
+				SELECT * FROM all_docs
+			),
+			scored AS (
+				SELECT 
+					file_path,
+					content,
+					-- Semantic score: HIGH weight for natural language understanding
+					(1 - (embedding <=> $1::vector)) * 0.85 as semantic_score,
+					
+					-- All words bonus: 0.25 if ALL search words are found
+					CASE 
+						WHEN matched_word_count >= $5::int THEN 0.08
+						ELSE 0
+					END as all_words_bonus,
+					
+					-- Per-word match score: proportional to words found (max 0.05)
+					(matched_word_count::float / GREATEST($5::int, 1)) * 0.05 as word_match_score,
+					
+					-- Word frequency bonus: more occurrences = higher score (max 0.02)
+					LEAST(0.02, (total_word_occurrences::float / 10) * 0.02) as frequency_bonus,
+					
+					-- Exact phrase bonus: 0.10 if exact phrase appears
+					CASE 
+						WHEN lower(content) LIKE '%' || lower($3::text) || '%' THEN 0.05
+						ELSE 0
+					END as exact_phrase_bonus,
+					
+					-- Filename bonus: 0.03 if filename contains search terms
+					CASE 
+						WHEN lower(file_path) LIKE '%' || lower(replace($3::text, ' ', '%')) || '%' THEN 0.03
+						ELSE 0
+					END as filename_bonus,
+					
+					-- Full-text search rank bonus (for relevance ordering)
+					CASE 
+						WHEN to_tsvector('simple', content) @@ to_tsquery('simple', $2::text)
+						THEN ts_rank(to_tsvector('simple', content), to_tsquery('simple', $2::text)) * 0.02
+						ELSE 0
+					END as fts_bonus
+				FROM combined
+			)
+			SELECT 
+				file_path,
+				content,
+				-- Final score: sum of all components, capped at 1.0
+				LEAST(1.0, 
+					semantic_score + 
+					all_words_bonus + 
+					word_match_score + 
+					frequency_bonus +
+					exact_phrase_bonus + 
+					filename_bonus +
+					fts_bonus
+				) as similarity
+			FROM scored
+			ORDER BY similarity DESC
 			LIMIT 10;
-		`, embeddingStr)
+		`, embeddingStr, tsQueryOr, query, wordsForLike, wordCount)
 		if err != nil {
-			logger.WithError(err).Error("Failed to run similarity search query")
+			logger.WithError(err).Error("Failed to run advanced hybrid search query")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "database query failed"})
 			return
 		}

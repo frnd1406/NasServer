@@ -55,6 +55,10 @@ type Config struct {
 	// AI/semantic search
 	AIServiceURL string
 
+	// LLM for RAG
+	OllamaURL string
+	LLMModel  string
+
 	// Backup configuration
 	BackupSchedule       string
 	BackupRetentionCount int
@@ -80,6 +84,8 @@ func LoadConfigFromEnv() (*Config, error) {
 		BackupRetentionCount: getEnvInt("BACKUP_RETENTION_COUNT", 7),
 		BackupStoragePath:    getEnv("BACKUP_STORAGE_PATH", "/mnt/backups"),
 		AIServiceURL:         getEnv("AI_SERVICE_URL", "http://ai-knowledge-agent:5000"),
+		OllamaURL:            getEnv("OLLAMA_URL", "http://localhost:11434"),
+		LLMModel:             getEnv("LLM_MODEL", "qwen2.5:3b"),
 	}
 
 	// CORS Origins (Whitelist)
