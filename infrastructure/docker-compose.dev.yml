@@ -1,4 +1,20 @@
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nas-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - nas-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: nas-api-postgres
@@ -145,7 +161,11 @@ services:
       PGDATABASE: "nas_db"
       PGUSER: "nas_user"
       PGPASSWORD: "nas_dev_password"
-      MODEL_NAME: "sentence-transformers/all-MiniLM-L6-v2"
+      OLLAMA_URL: "http://host.docker.internal:11434"
+      EMBEDDING_MODEL: "mxbai-embed-large"
+      LLM_MODEL: "llama3.2"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -172,6 +192,8 @@ volumes:
   nas_data:
     driver: local
   nas_backups:
+    driver: local
+  ollama_models:
     driver: local
 
 networks:

@@ -203,19 +203,17 @@ def init_db_pool(max_retries=5, base_delay=1.0):
             try:
                 register_vector(conn)
                 with conn.cursor() as cur:
-                    cur.execute(f"""
-                        CREATE TABLE IF NOT EXISTS file_embeddings (
-                            id SERIAL PRIMARY KEY,
-                            file_id TEXT NOT NULL,
-                            file_path TEXT NOT NULL,
-                            mime_type TEXT NOT NULL,
-                            content TEXT NOT NULL,
-                            embedding vector({EMBEDDING_DIM}),
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            UNIQUE(file_id)
+                    # Schema is already created by SQL migration - just verify it exists
+                    cur.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables
+                            WHERE table_name = 'file_embeddings'
                         )
                     """)
-                    conn.commit()
+                    exists = cur.fetchone()[0]
+                    if not exists:
+                        logger.error("file_embeddings table does not exist!")
+                        return False
                 logger.info("Database schema verified (vector dim: %d).", EMBEDDING_DIM)
             finally:
                 db_pool.putconn(conn)
@@ -311,17 +309,26 @@ def process_file():
         logger.info("Generating Ollama embedding for %s (%d chars)", file_id, len(content))
         embedding = get_ollama_embedding(content[:8000])  # Limit content size
         
+        # Store metadata as JSONB
+        metadata = {
+            "file_path": file_path,
+            "mime_type": mime_type,
+            "content_length": len(content)
+        }
+
         with get_db_connection() as conn:
             register_vector(conn)
             with conn.cursor() as cur:
+                # New schema: UUID id, chunk_index, metadata JSONB
                 cur.execute("""
-                    INSERT INTO file_embeddings (file_id, file_path, mime_type, content, embedding)
+                    INSERT INTO file_embeddings (file_id, chunk_index, content, embedding, metadata)
                     VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (file_id) DO UPDATE SET
+                    ON CONFLICT (file_id, chunk_index) DO UPDATE SET
                         content = EXCLUDED.content,
                         embedding = EXCLUDED.embedding,
+                        metadata = EXCLUDED.metadata,
                         created_at = CURRENT_TIMESTAMP
-                """, (file_id, file_path, mime_type, content, embedding))
+                """, (file_id, 0, content, embedding, json.dumps(metadata)))
                 conn.commit()
 
         logger.info("File indexed: %s", file_id)
@@ -383,19 +390,22 @@ def vector_search():
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT file_id, file_path, content, 
+                    SELECT file_id, content, metadata,
                            1 - (embedding <=> %s::vector) as similarity
                     FROM file_embeddings
                     ORDER BY embedding <=> %s::vector
                     LIMIT %s
                 """, (query_embedding, query_embedding, limit))
-                
-                results = [{
-                    "file_id": row[0],
-                    "file_path": row[1],
-                    "content": row[2][:500],
-                    "similarity": float(row[3])
-                } for row in cur.fetchall()]
+
+                results = []
+                for row in cur.fetchall():
+                    metadata = row[2] or {}
+                    results.append({
+                        "file_id": row[0],
+                        "file_path": metadata.get("file_path", "unknown"),
+                        "content": row[1][:500],
+                        "similarity": float(row[3])
+                    })
 
         return jsonify({"results": results, "query": query})
 
@@ -433,19 +443,22 @@ def rag_query():
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT file_id, file_path, content,
+                    SELECT file_id, content, metadata,
                            1 - (embedding <=> %s::vector) as similarity
                     FROM file_embeddings
                     ORDER BY embedding <=> %s::vector
                     LIMIT %s
                 """, (query_embedding, query_embedding, top_k))
-                
-                docs = [{
-                    "file_id": row[0],
-                    "file_path": row[1],
-                    "content": row[2],
-                    "similarity": float(row[3])
-                } for row in cur.fetchall()]
+
+                docs = []
+                for row in cur.fetchall():
+                    metadata = row[2] or {}
+                    docs.append({
+                        "file_id": row[0],
+                        "file_path": metadata.get("file_path", "unknown"),
+                        "content": row[1],
+                        "similarity": float(row[3])
+                    })
 
         if not docs:
             return jsonify({
