@@ -31,6 +31,7 @@ type AIAgentPayload struct {
 	FilePath string `json:"file_path"`
 	FileID   string `json:"file_id"`
 	MimeType string `json:"mime_type"`
+	Content  string `json:"content,omitempty"` // Optional: if set, agent uses this instead of reading from disk
 }
 
 // notifyAIAgent sends a fire-and-forget notification to the AI knowledge agent

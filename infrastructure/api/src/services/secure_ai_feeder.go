@@ -126,7 +126,7 @@ func (f *SecureAIFeeder) FeedEncryptedFile(
 	}
 
 	// Step 5: POST to AI agent
-	url := f.aiAgentURL + "/ingest_direct"
+	url := f.aiAgentURL + "/process"
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payloadBytes))
 	if err != nil {
@@ -194,7 +194,7 @@ func (f *SecureAIFeeder) FeedContent(
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
-	url := f.aiAgentURL + "/ingest_direct"
+	url := f.aiAgentURL + "/process"
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payloadBytes))
 	if err != nil {

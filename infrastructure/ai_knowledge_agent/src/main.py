@@ -556,7 +556,11 @@ def reindex():
 
 @app.route("/process", methods=["POST"])
 def process_file():
-    """Process an uploaded file and generate embeddings via Ollama."""
+    """Process an uploaded file.
+    Supports two modes:
+    1. Direct Text (Push): content is sent in JSON (for encrypted files)
+    2. Disk Read (Pull): agent reads file from disk (legacy/public files)
+    """
     if not model_loaded:
         logger.error("Ollama not ready")
         return jsonify({"error": "Ollama not loaded"}), 503
@@ -566,31 +570,43 @@ def process_file():
         if not data:
             return jsonify({"error": "Missing JSON payload"}), 400
 
-        file_path = data.get("file_path")
         file_id = data.get("file_id")
         mime_type = data.get("mime_type")
+        
+        # NEU: Wir schauen, ob uns der Text direkt geschickt wurde
+        direct_content = data.get("content") 
+        file_path = data.get("file_path")
 
-        if not all([file_path, file_id, mime_type]):
-            return jsonify({"error": "Missing required fields: file_path, file_id, mime_type"}), 400
+        if not file_id or not mime_type:
+            return jsonify({"error": "Missing required fields: file_id, mime_type"}), 400
 
-        logger.info("Processing file: %s (ID: %s)", file_path, file_id)
+        content = ""
 
-        if not os.path.exists(file_path):
-            return jsonify({"error": f"File not found: {file_path}"}), 404
+        # MODUS A: Push (Sicher für Verschlüsselung)
+        if direct_content:
+            logger.info("Processing direct content push for %s", file_id)
+            content = direct_content
 
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+        # MODUS B: Pull (Fallback für unverschlüsselte Dateien auf Disk)
+        elif file_path:
+            logger.info("Processing file from disk: %s", file_path)
+            if not os.path.exists(file_path):
+                return jsonify({"error": f"File not found: {file_path}"}), 404
+            
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        else:
+            return jsonify({"error": "No content and no file_path provided"}), 400
 
         if not content.strip():
-            return jsonify({"status": "skipped", "reason": "empty file"}), 200
+            return jsonify({"status": "skipped", "reason": "empty content"}), 200
 
-        # Get embedding from Ollama
+        # Ab hier bleibt alles gleich (Embedding erzeugen)
         logger.info("Generating Ollama embedding for %s (%d chars)", file_id, len(content))
-        embedding = get_ollama_embedding(content[:8000])  # Limit content size
+        embedding = get_ollama_embedding(content[:8000]) 
         
-        # Store metadata as JSONB
         metadata = {
-            "file_path": file_path,
+            "file_path": file_path or "memory", # Merken, woher es kam
             "mime_type": mime_type,
             "content_length": len(content)
         }
@@ -598,7 +614,6 @@ def process_file():
         with get_db_connection() as conn:
             register_vector(conn)
             with conn.cursor() as cur:
-                # New schema: UUID id, chunk_index, metadata JSONB
                 cur.execute("""
                     INSERT INTO file_embeddings (file_id, chunk_index, content, embedding, metadata)
                     VALUES (%s, %s, %s, %s, %s)
@@ -610,12 +625,11 @@ def process_file():
                 """, (file_id, 0, content, embedding, json.dumps(metadata)))
                 conn.commit()
 
-        logger.info("File indexed: %s", file_id)
+        logger.info("File indexed successfully: %s", file_id)
         return jsonify({
             "status": "success",
             "file_id": file_id,
-            "content_length": len(content),
-            "embedding_dim": len(embedding)
+            "mode": "push" if direct_content else "disk"
         })
 
     except Exception as e:
@@ -623,88 +637,6 @@ def process_file():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/ingest_direct", methods=["POST"])
-def ingest_direct():
-    """
-    Direct content ingestion - NO FILE I/O.
-    Used for encrypted files where the Go API pushes decrypted content.
-    Plaintext exists only in RAM during this request.
-    
-    Request:
-        {
-            "content": "plaintext content string",
-            "file_id": "unique identifier (e.g. filename.pdf.enc)",
-            "file_path": "original encrypted path for source citation",
-            "mime_type": "text/plain"
-        }
-    
-    Security: No temp files written. Content is discarded after embedding.
-    """
-    if not model_loaded:
-        logger.error("Ollama not ready for direct ingestion")
-        return jsonify({"error": "Ollama not loaded"}), 503
-
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Missing JSON payload"}), 400
-
-        content = data.get("content")
-        file_id = data.get("file_id")
-        file_path = data.get("file_path")
-        mime_type = data.get("mime_type", "text/plain")
-
-        if not content:
-            return jsonify({"error": "Missing required field: content"}), 400
-        if not file_id:
-            return jsonify({"error": "Missing required field: file_id"}), 400
-        if not file_path:
-            return jsonify({"error": "Missing required field: file_path"}), 400
-
-        logger.info("Direct ingestion: %s (ID: %s, %d chars)", file_path, file_id, len(content))
-
-        if not content.strip():
-            return jsonify({"status": "skipped", "reason": "empty content"}), 200
-
-        # Get embedding from Ollama (content is in RAM, no disk I/O)
-        logger.info("Generating embedding for direct content: %s (%d chars)", file_id, len(content))
-        embedding = get_ollama_embedding(content[:8000])  # Limit content size
-        
-        # Store metadata with encrypted file path (for source citations)
-        metadata = {
-            "file_path": file_path,  # Points to encrypted file for download
-            "mime_type": mime_type,
-            "content_length": len(content),
-            "encrypted": True  # Flag indicating this came from encrypted storage
-        }
-
-        with get_db_connection() as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO file_embeddings (file_id, chunk_index, content, embedding, metadata)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (file_id, chunk_index) DO UPDATE SET
-                        content = EXCLUDED.content,
-                        embedding = EXCLUDED.embedding,
-                        metadata = EXCLUDED.metadata,
-                        created_at = CURRENT_TIMESTAMP
-                """, (file_id, 0, content, embedding, json.dumps(metadata)))
-                conn.commit()
-
-        logger.info("Direct ingestion complete: %s (encrypted source)", file_id)
-        return jsonify({
-            "status": "success",
-            "file_id": file_id,
-            "file_path": file_path,
-            "content_length": len(content),
-            "embedding_dim": len(embedding),
-            "encrypted_source": True
-        })
-
-    except Exception as e:
-        logger.error("Direct ingestion error: %s", str(e), exc_info=True)
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/embed_query", methods=["POST"])
