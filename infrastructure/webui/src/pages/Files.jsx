@@ -1,12 +1,13 @@
-// Files page - Refactored with extracted components and hooks
+// Files page - With multi-select, batch operations, and search filter
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { Loader2, Search, X, Download, Trash2, CheckSquare, Square } from 'lucide-react';
 
 // Hooks
 import { useFileStorage } from '../hooks/useFileStorage';
 import { useFilePreview } from '../hooks/useFilePreview';
 import { useDragAndDrop } from '../hooks/useDragAndDrop';
+import { useFileSelection } from '../hooks/useFileSelection';
 
 // Utils
 import { getBreadcrumbs, joinPath } from '../utils/fileUtils';
@@ -39,6 +40,9 @@ export default function Files() {
     renameFile,
     createFolder,
     navigateTo,
+    batchDownload,
+    downloadFolderAsZip,
+    batchDelete,
   } = useFileStorage();
 
   // File preview hook
@@ -49,6 +53,27 @@ export default function Files() {
     openPreview,
     closePreview,
   } = useFilePreview();
+
+  // Search/Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filtered files based on search
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery.trim()) return files;
+    const query = searchQuery.toLowerCase();
+    return files.filter(f => f.name.toLowerCase().includes(query));
+  }, [files, searchQuery]);
+
+  // Multi-selection hook
+  const {
+    selectedCount,
+    selectedItems,
+    allSelected,
+    toggleSelect,
+    clearSelection,
+    toggleSelectAll,
+    isSelected,
+  } = useFileSelection(filteredFiles);
 
   // View state
   const [viewMode, setViewMode] = useState('list');
@@ -65,11 +90,17 @@ export default function Files() {
 
   const { isDragging, dragProps } = useDragAndDrop(handleFilesDropped);
 
-  // Load files on mount
+  // Load files on mount and path change
   useEffect(() => {
     loadFiles('/');
     loadTrash();
   }, []);
+
+  // Clear selection when path changes
+  useEffect(() => {
+    clearSelection();
+    setSearchQuery('');
+  }, [path, clearSelection]);
 
   // Handlers
   const handleNavigate = useCallback((item) => {
@@ -87,8 +118,13 @@ export default function Files() {
   }, [renameFile, path]);
 
   const handleDownload = useCallback((item) => {
-    downloadFile(item, path);
-  }, [downloadFile, path]);
+    if (item.isDir) {
+      // Download folder as ZIP
+      downloadFolderAsZip(joinPath(path, item.name));
+    } else {
+      downloadFile(item, path);
+    }
+  }, [downloadFile, downloadFolderAsZip, path]);
 
   const handleDelete = useCallback((item) => {
     deleteFile(item, path);
@@ -118,6 +154,23 @@ export default function Files() {
     setShowTrash(!showTrash);
     if (!showTrash) loadTrash();
   }, [showTrash, loadTrash]);
+
+  // Batch action handlers
+  const handleBatchDownload = useCallback(() => {
+    const names = selectedItems.map(f => f.name);
+    batchDownload(names, path);
+  }, [selectedItems, batchDownload, path]);
+
+  const handleBatchDelete = useCallback(() => {
+    const names = selectedItems.map(f => f.name);
+    batchDelete(names, path);
+    clearSelection();
+  }, [selectedItems, batchDelete, path, clearSelection]);
+
+  const handleToggleSelectAll = useCallback(() => {
+    const allNames = filteredFiles.map(f => f.name);
+    toggleSelectAll(allNames);
+  }, [filteredFiles, toggleSelectAll]);
 
   const breadcrumbs = getBreadcrumbs(path);
 
@@ -172,7 +225,7 @@ export default function Files() {
             {/* Toolbar */}
             <FileToolbar
               breadcrumbs={breadcrumbs}
-              fileCount={files.length}
+              fileCount={filteredFiles.length}
               trashedCount={trashedFiles.length}
               viewMode={viewMode}
               showTrash={showTrash}
@@ -185,6 +238,73 @@ export default function Files() {
               onToggleTrash={handleToggleTrash}
             />
 
+            {/* Search & Selection Bar */}
+            <div className="px-4 py-3 border-b border-white/5 flex flex-wrap items-center gap-3">
+              {/* Search Input */}
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Dateien filtern..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Select All Toggle */}
+              <button
+                onClick={handleToggleSelectAll}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm ${allSelected
+                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
+                  }`}
+              >
+                {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                <span className="hidden sm:inline">Alle auswählen</span>
+              </button>
+
+              {/* Selection Actions */}
+              {selectedCount > 0 && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-sm text-slate-400">
+                    {selectedCount} ausgewählt
+                  </span>
+                  <button
+                    onClick={handleBatchDownload}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all text-sm"
+                    title="Als ZIP herunterladen"
+                  >
+                    <Download size={16} />
+                    <span className="hidden sm:inline">ZIP</span>
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all text-sm"
+                    title="Ausgewählte löschen"
+                  >
+                    <Trash2 size={16} />
+                    <span className="hidden sm:inline">Löschen</span>
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-all"
+                    title="Auswahl aufheben"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Files Content */}
             <div className="p-6">
               {loading ? (
@@ -194,21 +314,27 @@ export default function Files() {
                 </div>
               ) : viewMode === 'grid' ? (
                 <FileGridView
-                  files={files}
+                  files={filteredFiles}
                   onNavigate={handleNavigate}
                   onPreview={handlePreview}
                   onRename={handleRename}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
+                  selectedItems={selectedItems}
+                  onToggleSelect={toggleSelect}
+                  isSelected={isSelected}
                 />
               ) : (
                 <FileListView
-                  files={files}
+                  files={filteredFiles}
                   onNavigate={handleNavigate}
                   onPreview={handlePreview}
                   onRename={handleRename}
                   onDownload={handleDownload}
                   onDelete={handleDelete}
+                  selectedItems={selectedItems}
+                  onToggleSelect={toggleSelect}
+                  isSelected={isSelected}
                 />
               )}
             </div>

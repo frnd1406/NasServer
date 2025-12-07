@@ -1,7 +1,7 @@
-// File Card component for Grid View
+// File Card component for Grid View with selection support
 
 import { useState } from 'react';
-import { Edit3, Check, X, Eye, Download, Trash2 } from 'lucide-react';
+import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
 
@@ -11,10 +11,14 @@ export function FileCard({
     onPreview,
     onRename,
     onDownload,
-    onDelete
+    onDelete,
+    onToggleSelect,
+    isSelected,
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
     const [newName, setNewName] = useState('');
+
+    const selected = isSelected?.(item.name) || false;
 
     const startRename = () => {
         setIsRenaming(true);
@@ -36,9 +40,28 @@ export function FileCard({
 
     return (
         <div
-            className="group relative overflow-hidden rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-xl hover:bg-white/5 transition-all cursor-pointer"
+            className={`group relative overflow-hidden rounded-xl border transition-all cursor-pointer ${selected
+                    ? 'border-blue-500/50 bg-blue-500/10'
+                    : 'border-white/10 bg-slate-900/40 hover:bg-white/5'
+                }`}
             onClick={() => item.isDir && onNavigate(item)}
         >
+            {/* Selection Checkbox */}
+            <div
+                className="absolute top-2 left-2 z-10"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button
+                    onClick={() => onToggleSelect?.(item.name)}
+                    className={`p-1 rounded transition-all ${selected
+                            ? 'text-blue-400 bg-blue-500/20'
+                            : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
+                        }`}
+                >
+                    {selected ? <CheckSquare size={16} /> : <Square size={16} />}
+                </button>
+            </div>
+
             <div className="p-4 flex flex-col items-center text-center">
                 {/* Icon */}
                 <div className={`p-4 rounded-xl mb-3 ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800/50 text-slate-400'} group-hover:scale-110 transition-transform`}>
@@ -95,15 +118,13 @@ export function FileCard({
                     >
                         <Edit3 size={12} />
                     </button>
-                    {!item.isDir && (
-                        <button
-                            onClick={() => onDownload(item)}
-                            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all"
-                            title="Download"
-                        >
-                            <Download size={12} />
-                        </button>
-                    )}
+                    <button
+                        onClick={() => onDownload(item)}
+                        className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all"
+                        title={item.isDir ? "Download as ZIP" : "Download"}
+                    >
+                        {item.isDir ? <Archive size={12} /> : <Download size={12} />}
+                    </button>
                     <button
                         onClick={() => onDelete(item)}
                         className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all"

@@ -25,11 +25,11 @@ const MaxUploadSize = 100 * 1024 * 1024 // 100 MB
 // AllowedMimeTypes defines the whitelist of permitted file types
 var AllowedMimeTypes = map[string]bool{
 	// Images
-	"image/jpeg": true,
-	"image/jpg":  true,
-	"image/png":  true,
-	"image/gif":  true,
-	"image/webp": true,
+	"image/jpeg":    true,
+	"image/jpg":     true,
+	"image/png":     true,
+	"image/gif":     true,
+	"image/webp":    true,
 	"image/svg+xml": true,
 
 	// Documents
@@ -39,11 +39,11 @@ var AllowedMimeTypes = map[string]bool{
 	"text/markdown":   true,
 
 	// Archives (careful - could contain malware, but needed for backups)
-	"application/zip":  true,
+	"application/zip":              true,
 	"application/x-zip-compressed": true,
-	"application/gzip": true,
-	"application/x-gzip": true,
-	"application/x-tar": true,
+	"application/gzip":             true,
+	"application/x-gzip":           true,
+	"application/x-tar":            true,
 
 	// Video
 	"video/mp4":  true,
@@ -59,12 +59,12 @@ var AllowedMimeTypes = map[string]bool{
 
 // Magic number signatures for common file types (first 16 bytes)
 var magicNumbers = map[string][]byte{
-	"image/jpeg":       {0xFF, 0xD8, 0xFF},
-	"image/png":        {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
-	"image/gif":        {0x47, 0x49, 0x46, 0x38},
-	"application/pdf":  {0x25, 0x50, 0x44, 0x46},
-	"application/zip":  {0x50, 0x4B, 0x03, 0x04},
-	"video/mp4":        {0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70}, // ftyp box
+	"image/jpeg":      {0xFF, 0xD8, 0xFF},
+	"image/png":       {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+	"image/gif":       {0x47, 0x49, 0x46, 0x38},
+	"application/pdf": {0x25, 0x50, 0x44, 0x46},
+	"application/zip": {0x50, 0x4B, 0x03, 0x04},
+	"video/mp4":       {0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70}, // ftyp box
 }
 
 // StorageEntry represents a file or directory item within the storage root.
@@ -513,4 +513,31 @@ func (s *StorageService) Rename(oldRel, newName string) error {
 		return os.Rename(oldAbs, newAbs)
 	}
 	return os.Rename(oldAbs, newAbs)
+}
+
+// GetFullPath returns the full filesystem path for a relative path (with security checks)
+func (s *StorageService) GetFullPath(relPath string) (string, error) {
+	return s.sanitizePath(relPath)
+}
+
+// Mkdir creates a new directory at the given relative path
+func (s *StorageService) Mkdir(relPath string) error {
+	if relPath == "" || relPath == "/" {
+		return fmt.Errorf("invalid directory path")
+	}
+
+	target, err := s.sanitizePath(relPath)
+	if err != nil {
+		return err
+	}
+
+	// Check if already exists
+	if info, err := os.Stat(target); err == nil {
+		if info.IsDir() {
+			return nil // Already exists as directory
+		}
+		return fmt.Errorf("path exists but is not a directory")
+	}
+
+	return os.MkdirAll(target, 0o755)
 }

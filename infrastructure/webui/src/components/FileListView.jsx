@@ -1,7 +1,7 @@
-// File List View component (table view)
+// File List View component (table view) with multi-select support
 
 import { useState } from 'react';
-import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen } from 'lucide-react';
+import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
 
@@ -12,6 +12,8 @@ export function FileListView({
     onRename,
     onDownload,
     onDelete,
+    onToggleSelect,
+    isSelected,
 }) {
     const [renamingItem, setRenamingItem] = useState(null);
     const [newName, setNewName] = useState('');
@@ -48,6 +50,7 @@ export function FileListView({
             <table className="w-full text-left border-collapse">
                 <thead>
                     <tr className="text-xs text-slate-500 border-b border-white/5">
+                        <th className="py-3 px-2 font-medium uppercase tracking-wider w-10"></th>
                         <th className="py-3 px-2 font-medium uppercase tracking-wider">Name</th>
                         <th className="py-3 px-2 font-medium uppercase tracking-wider">Size</th>
                         <th className="py-3 px-2 font-medium uppercase tracking-wider">Modified</th>
@@ -57,13 +60,28 @@ export function FileListView({
                 <tbody className="text-sm">
                     {files.map((item) => {
                         const isRenaming = renamingItem?.name === item.name;
+                        const selected = isSelected?.(item.name) || false;
 
                         return (
                             <tr
                                 key={item.name}
-                                className="group border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer"
+                                className={`group border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer ${selected ? 'bg-blue-500/10' : ''
+                                    }`}
                                 onClick={() => item.isDir && onNavigate(item)}
                             >
+                                {/* Checkbox */}
+                                <td className="py-4 px-2" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                        onClick={() => onToggleSelect?.(item.name)}
+                                        className={`p-1 rounded transition-all ${selected
+                                                ? 'text-blue-400'
+                                                : 'text-slate-500 hover:text-slate-300'
+                                            }`}
+                                    >
+                                        {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+                                    </button>
+                                </td>
+
                                 <td className="py-4 px-2 font-medium text-white">
                                     {isRenaming ? (
                                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -123,15 +141,13 @@ export function FileListView({
                                         >
                                             <Edit3 size={14} />
                                         </button>
-                                        {!item.isDir && (
-                                            <button
-                                                onClick={() => onDownload(item)}
-                                                className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all"
-                                                title="Download"
-                                            >
-                                                <Download size={14} />
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={() => onDownload(item)}
+                                            className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all"
+                                            title={item.isDir ? "Download as ZIP" : "Download"}
+                                        >
+                                            {item.isDir ? <Archive size={14} /> : <Download size={14} />}
+                                        </button>
                                         <button
                                             onClick={() => onDelete(item)}
                                             className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all"

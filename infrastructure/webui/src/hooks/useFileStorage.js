@@ -276,6 +276,99 @@ export function useFileStorage() {
     // Clear error
     const clearError = useCallback(() => setError(''), []);
 
+    // Batch download multiple files as ZIP
+    const batchDownload = useCallback(async (selectedNames, currentPath) => {
+        if (!selectedNames || selectedNames.length === 0) {
+            setError('Keine Dateien ausgewählt');
+            return;
+        }
+
+        try {
+            const paths = selectedNames.map(name => joinPath(currentPath, name));
+
+            const res = await fetch(`${API_BASE}/api/v1/storage/batch-download`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ paths }),
+            });
+
+            if (!res.ok) {
+                throw new Error(`Batch download failed: HTTP ${res.status}`);
+            }
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'download.zip';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.message);
+        }
+    }, []);
+
+    // Download folder as ZIP
+    const downloadFolderAsZip = useCallback(async (folderPath) => {
+        try {
+            const res = await fetch(
+                `${API_BASE}/api/v1/storage/download-zip?path=${encodeURIComponent(folderPath)}`,
+                {
+                    credentials: 'include',
+                    headers: authHeaders(),
+                }
+            );
+
+            if (!res.ok) {
+                throw new Error(`ZIP download failed: HTTP ${res.status}`);
+            }
+
+            const blob = await res.blob();
+            const folderName = folderPath.split('/').filter(Boolean).pop() || 'folder';
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${folderName}.zip`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.message);
+        }
+    }, []);
+
+    // Delete multiple files
+    const batchDelete = useCallback(async (selectedNames, currentPath) => {
+        if (!selectedNames || selectedNames.length === 0) return;
+
+        const count = selectedNames.length;
+        if (!window.confirm(`${count} Dateien/Ordner wirklich löschen?`)) return;
+
+        try {
+            for (const name of selectedNames) {
+                const target = joinPath(currentPath, name);
+                const res = await fetch(
+                    `${API_BASE}/api/v1/storage/delete?path=${encodeURIComponent(target)}`,
+                    {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: authHeaders(),
+                    }
+                );
+                if (!res.ok) {
+                    console.warn(`Failed to delete ${name}: HTTP ${res.status}`);
+                }
+            }
+            await loadFiles(currentPath);
+            await loadTrash();
+        } catch (err) {
+            setError(err.message);
+        }
+    }, [loadFiles, loadTrash]);
+
     return {
         // State
         files,
@@ -296,5 +389,10 @@ export function useFileStorage() {
         navigateTo,
         goUp,
         clearError,
+        // Batch Actions
+        batchDownload,
+        downloadFolderAsZip,
+        batchDelete,
     };
 }
+

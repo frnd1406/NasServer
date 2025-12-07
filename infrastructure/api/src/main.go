@@ -265,11 +265,14 @@ func main() {
 		storageV1.GET("/files", handlers.StorageListHandler(storageService, logger))
 		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, logger))
 		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, logger))
+		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
+		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
 		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, logger))
 		storageV1.GET("/trash", handlers.StorageTrashListHandler(storageService, logger))
 		storageV1.POST("/trash/restore/:id", handlers.StorageTrashRestoreHandler(storageService, logger))
 		storageV1.DELETE("/trash/:id", handlers.StorageTrashDeleteHandler(storageService, logger))
 		storageV1.POST("/rename", handlers.StorageRenameHandler(storageService, logger))
+		storageV1.POST("/mkdir", handlers.StorageMkdirHandler(storageService, logger))
 	}
 
 	backupV1 := r.Group("/api/v1/backups")

@@ -1,4 +1,4 @@
-// File Grid View component
+// File Grid View component with selection support
 
 import { FolderOpen } from 'lucide-react';
 import { FileCard } from './FileCard';
@@ -10,6 +10,8 @@ export function FileGridView({
     onRename,
     onDownload,
     onDelete,
+    onToggleSelect,
+    isSelected,
 }) {
     if (files.length === 0) {
         return (
@@ -31,6 +33,8 @@ export function FileGridView({
                     onRename={onRename}
                     onDownload={onDownload}
                     onDelete={onDelete}
+                    onToggleSelect={onToggleSelect}
+                    isSelected={isSelected}
                 />
             ))}
         </div>

@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,10 +20,10 @@ import (
 
 // AI-indexable MIME types (text-based files only)
 var aiIndexableMimeTypes = map[string]bool{
-	"text/plain":       true,
-	"application/pdf":  true,
-	"text/markdown":    true,
-	"text/csv":         true,
+	"text/plain":      true,
+	"application/pdf": true,
+	"text/markdown":   true,
+	"text/csv":        true,
 }
 
 // AIAgentPayload represents the data sent to the AI knowledge agent
@@ -353,5 +356,273 @@ func StorageRenameHandler(storage *services.StorageService, logger *logrus.Logge
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "renamed"})
+	}
+}
+
+// StorageDownloadZipHandler downloads a directory as a ZIP file
+func StorageDownloadZipHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetString("request_id")
+		path := c.Query("path")
+		if path == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+			return
+		}
+
+		// Get the full path for the directory
+		fullPath, err := storage.GetFullPath(path)
+		if err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		// Check if it's a directory
+		info, err := os.Stat(fullPath)
+		if err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		if !info.IsDir() {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "path must be a directory"})
+			return
+		}
+
+		// Create a buffer to write the ZIP to
+		buf := new(bytes.Buffer)
+		zipWriter := zip.NewWriter(buf)
+
+		// Walk the directory and add files to ZIP
+		err = filepath.Walk(fullPath, func(filePath string, fileInfo os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Skip the root directory itself
+			if filePath == fullPath {
+				return nil
+			}
+
+			// Get relative path for ZIP entry
+			relPath, err := filepath.Rel(fullPath, filePath)
+			if err != nil {
+				return err
+			}
+
+			// Skip hidden files and .trash
+			if strings.HasPrefix(filepath.Base(relPath), ".") {
+				if fileInfo.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if fileInfo.IsDir() {
+				// Add directory entry
+				_, err := zipWriter.Create(relPath + "/")
+				return err
+			}
+
+			// Add file to ZIP
+			header, err := zip.FileInfoHeader(fileInfo)
+			if err != nil {
+				return err
+			}
+			header.Name = relPath
+			header.Method = zip.Deflate
+
+			writer, err := zipWriter.CreateHeader(header)
+			if err != nil {
+				return err
+			}
+
+			file, err := os.Open(filePath)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = io.Copy(writer, file)
+			return err
+		})
+
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"path":       path,
+				"error":      err.Error(),
+			}).Error("storage: failed to create ZIP")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create ZIP"})
+			return
+		}
+
+		zipWriter.Close()
+
+		// Get folder name for the ZIP filename
+		folderName := filepath.Base(fullPath)
+		if folderName == "" || folderName == "." {
+			folderName = "download"
+		}
+
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", folderName))
+		c.Data(http.StatusOK, "application/zip", buf.Bytes())
+	}
+}
+
+// batchDownloadRequest represents the request for batch download
+type batchDownloadRequest struct {
+	Paths []string `json:"paths" binding:"required"`
+}
+
+// StorageBatchDownloadHandler downloads multiple files as a ZIP
+func StorageBatchDownloadHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetString("request_id")
+
+		var req batchDownloadRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request: paths array required"})
+			return
+		}
+
+		if len(req.Paths) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no files selected"})
+			return
+		}
+
+		// Create a buffer for ZIP
+		buf := new(bytes.Buffer)
+		zipWriter := zip.NewWriter(buf)
+
+		for _, path := range req.Paths {
+			fullPath, err := storage.GetFullPath(path)
+			if err != nil {
+				logger.WithFields(logrus.Fields{
+					"request_id": requestID,
+					"path":       path,
+					"error":      err.Error(),
+				}).Warn("storage: skipping invalid path in batch download")
+				continue
+			}
+
+			info, err := os.Stat(fullPath)
+			if err != nil {
+				continue
+			}
+
+			if info.IsDir() {
+				// Add directory contents to ZIP
+				baseName := filepath.Base(fullPath)
+				err = filepath.Walk(fullPath, func(filePath string, fileInfo os.FileInfo, err error) error {
+					if err != nil {
+						return err
+					}
+
+					if filePath == fullPath {
+						return nil
+					}
+
+					relPath, err := filepath.Rel(fullPath, filePath)
+					if err != nil {
+						return err
+					}
+
+					// Skip hidden files
+					if strings.HasPrefix(filepath.Base(relPath), ".") {
+						if fileInfo.IsDir() {
+							return filepath.SkipDir
+						}
+						return nil
+					}
+
+					zipPath := filepath.Join(baseName, relPath)
+
+					if fileInfo.IsDir() {
+						_, err := zipWriter.Create(zipPath + "/")
+						return err
+					}
+
+					header, err := zip.FileInfoHeader(fileInfo)
+					if err != nil {
+						return err
+					}
+					header.Name = zipPath
+					header.Method = zip.Deflate
+
+					writer, err := zipWriter.CreateHeader(header)
+					if err != nil {
+						return err
+					}
+
+					file, err := os.Open(filePath)
+					if err != nil {
+						return err
+					}
+					defer file.Close()
+
+					_, err = io.Copy(writer, file)
+					return err
+				})
+
+				if err != nil {
+					logger.WithFields(logrus.Fields{
+						"request_id": requestID,
+						"path":       path,
+						"error":      err.Error(),
+					}).Warn("storage: error adding directory to batch ZIP")
+				}
+			} else {
+				// Add single file
+				header, err := zip.FileInfoHeader(info)
+				if err != nil {
+					continue
+				}
+				header.Name = info.Name()
+				header.Method = zip.Deflate
+
+				writer, err := zipWriter.CreateHeader(header)
+				if err != nil {
+					continue
+				}
+
+				file, err := os.Open(fullPath)
+				if err != nil {
+					continue
+				}
+				_, err = io.Copy(writer, file)
+				file.Close()
+				if err != nil {
+					continue
+				}
+			}
+		}
+
+		zipWriter.Close()
+
+		c.Header("Content-Disposition", "attachment; filename=\"download.zip\"")
+		c.Data(http.StatusOK, "application/zip", buf.Bytes())
+	}
+}
+
+// StorageMkdirHandler creates a new directory
+func StorageMkdirHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetString("request_id")
+
+		var req struct {
+			Path string `json:"path" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+			return
+		}
+
+		if err := storage.Mkdir(req.Path); err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "created"})
 	}
 }

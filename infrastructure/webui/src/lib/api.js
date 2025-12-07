@@ -370,3 +370,62 @@ export async function queryAI(query) {
   return response;
 }
 
+/**
+ * Download multiple files/folders as a ZIP
+ * @param {string[]} paths - Array of file/folder paths to download
+ * @returns {Promise<Blob>} ZIP file blob
+ */
+export async function batchDownload(paths) {
+  if (!paths || paths.length === 0) {
+    throw new Error("No files selected for download");
+  }
+
+  const accessToken = localStorage.getItem("accessToken");
+  const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
+
+  const res = await fetch(buildUrl("/api/v1/storage/batch-download"), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "X-CSRF-Token": csrfToken,
+    },
+    body: JSON.stringify({ paths }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Batch download failed: ${res.status}`);
+  }
+
+  return await res.blob();
+}
+
+/**
+ * Download a folder as a ZIP file
+ * @param {string} path - Path to the folder
+ * @returns {Promise<Blob>} ZIP file blob
+ */
+export async function downloadFolderAsZip(path) {
+  if (!path) {
+    throw new Error("Folder path is required");
+  }
+
+  const accessToken = localStorage.getItem("accessToken");
+  const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
+
+  const res = await fetch(buildUrl(`/api/v1/storage/download-zip?path=${encodeURIComponent(path)}`), {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "X-CSRF-Token": csrfToken,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`ZIP download failed: ${res.status}`);
+  }
+
+  return await res.blob();
+}
