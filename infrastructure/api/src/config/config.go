@@ -63,6 +63,9 @@ type Config struct {
 	BackupSchedule       string
 	BackupRetentionCount int
 	BackupStoragePath    string
+
+	// Consistency check (orphan cleanup)
+	ConsistencyCheckIntervalMin int
 }
 
 // LoadConfig loads configuration using Viper (supports .env, config.yaml, and env vars)
@@ -76,16 +79,17 @@ func LoadConfig() (*Config, error) {
 func LoadConfigFromEnv() (*Config, error) {
 	cfg := &Config{
 		// Defaults
-		Port:                 getEnv("PORT", "8080"),
-		LogLevel:             getEnv("LOG_LEVEL", "info"),
-		Environment:          getEnv("ENV", "development"),
-		RateLimitPerMin:      getEnvInt("RATE_LIMIT_PER_MIN", 100),
-		BackupSchedule:       getEnv("BACKUP_SCHEDULE", "0 3 * * *"),
-		BackupRetentionCount: getEnvInt("BACKUP_RETENTION_COUNT", 7),
-		BackupStoragePath:    getEnv("BACKUP_STORAGE_PATH", "/mnt/backups"),
-		AIServiceURL:         getEnv("AI_SERVICE_URL", "http://ai-knowledge-agent:5000"),
-		OllamaURL:            getEnv("OLLAMA_URL", "http://localhost:11434"),
-		LLMModel:             getEnv("LLM_MODEL", "qwen2.5:3b"),
+		Port:                        getEnv("PORT", "8080"),
+		LogLevel:                    getEnv("LOG_LEVEL", "info"),
+		Environment:                 getEnv("ENV", "development"),
+		RateLimitPerMin:             getEnvInt("RATE_LIMIT_PER_MIN", 100),
+		BackupSchedule:              getEnv("BACKUP_SCHEDULE", "0 3 * * *"),
+		BackupRetentionCount:        getEnvInt("BACKUP_RETENTION_COUNT", 7),
+		BackupStoragePath:           getEnv("BACKUP_STORAGE_PATH", "/mnt/backups"),
+		ConsistencyCheckIntervalMin: getEnvInt("CONSISTENCY_CHECK_INTERVAL_MIN", 5),
+		AIServiceURL:                getEnv("AI_SERVICE_URL", "http://ai-knowledge-agent:5000"),
+		OllamaURL:                   getEnv("OLLAMA_URL", "http://localhost:11434"),
+		LLMModel:                    getEnv("LLM_MODEL", "qwen2.5:3b"),
 	}
 
 	// CORS Origins (Whitelist)

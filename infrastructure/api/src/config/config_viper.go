@@ -104,6 +104,9 @@ func LoadConfigWithViper() (*Config, error) {
 		// LLM for RAG
 		OllamaURL: v.GetString("ollama_url"),
 		LLMModel:  v.GetString("llm_model"),
+
+		// Consistency check
+		ConsistencyCheckIntervalMin: v.GetInt("consistency_check_interval_min"),
 	}
 
 	// Build DatabaseURL if not provided
@@ -171,6 +174,9 @@ func setDefaults(v *viper.Viper) {
 	// LLM for RAG
 	v.SetDefault("ollama_url", "http://localhost:11434")
 	v.SetDefault("llm_model", "qwen2.5:3b")
+
+	// Consistency check (orphan cleanup)
+	v.SetDefault("consistency_check_interval_min", 5)
 }
 
 // bindEnvVars explicitly binds environment variables to config keys
@@ -224,6 +230,9 @@ func bindEnvVars(v *viper.Viper) {
 	// LLM for RAG
 	_ = v.BindEnv("ollama_url", "OLLAMA_URL")
 	_ = v.BindEnv("llm_model", "LLM_MODEL")
+
+	// Consistency check
+	_ = v.BindEnv("consistency_check_interval_min", "CONSISTENCY_CHECK_INTERVAL_MIN")
 }
 
 // validateRequired validates that all required configuration fields are present

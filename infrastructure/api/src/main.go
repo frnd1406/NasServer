@@ -111,6 +111,7 @@ func main() {
 	systemMetricsRepo := repository.NewSystemMetricsRepository(dbx, logger)
 	systemAlertsRepo := repository.NewSystemAlertsRepository(dbx, logger)
 	monitoringRepo := repository.NewMonitoringRepository(db, logger)
+	embeddingsRepo := repository.NewFileEmbeddingsRepository(dbx, logger)
 
 	// Initialize services
 	jwtService, err := services.NewJWTService(cfg, logger)
@@ -156,12 +157,29 @@ func main() {
 
 	aiHTTPClient := &http.Client{Timeout: 8 * time.Second}
 
-	// Start backup scheduler in background
 	go func() {
 		if err := scheduler.StartBackupScheduler(backupService, cfg); err != nil {
 			logger.WithError(err).Error("Failed to start backup scheduler")
 		}
 	}()
+
+	// Initialize Consistency Service (orphan cleanup)
+	consistencyService := services.NewConsistencyService(
+		dbx,
+		embeddingsRepo,
+		"/mnt/data",
+		time.Duration(cfg.ConsistencyCheckIntervalMin)*time.Minute,
+		logger,
+	)
+
+	// Run initial reconciliation BEFORE HTTP server starts (ensures clean state)
+	logger.Info("Running initial consistency reconciliation...")
+	if err := consistencyService.RunReconciliation(context.Background()); err != nil {
+		logger.WithError(err).Warn("Initial reconciliation failed (non-fatal)")
+	}
+
+	// Start background consistency worker
+	go consistencyService.Start(context.Background())
 
 	// Create Gin engine (without default middleware)
 	r := gin.New()
@@ -409,6 +427,9 @@ func main() {
 	<-quit
 
 	logger.Info("Shutting down server...")
+
+	// Stop background workers
+	consistencyService.Stop()
 
 	// Give outstanding requests 5 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
