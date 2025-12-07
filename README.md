@@ -1,8 +1,8 @@
 # NAS.AI
 
-**Version:** 2.0  
-**Status:** Phase 2.2 - AI Core  
-**Updated:** 2025-12-04
+**Version:** 2.1  
+**Status:** Phase 2.3 - Encryption  
+**Updated:** 2025-12-07
 
 Secure, automated storage with semantic AI search and glassmorphism UI.
 
@@ -14,6 +14,7 @@ Secure, automated storage with semantic AI search and glassmorphism UI.
 - 🧠 **AI Search** - Semantic embeddings with pgvector
 - 💾 **Auto-Backup** - Scheduled with retention policies
 - 🎨 **Nebula UI** - Glassmorphism design
+- 🔐 **Zero-Knowledge Encryption** - AES-256-GCM + Argon2id
 
 ---
 

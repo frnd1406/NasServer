@@ -1,8 +1,8 @@
 # NAS.AI Infrastructure
 
-**Version:** 2.0  
-**Status:** Phase 2.2 - AI Core  
-**Updated:** 2025-12-04
+**Version:** 2.1  
+**Status:** Phase 2.3 - Encryption  
+**Updated:** 2025-12-07
 
 ---
 
@@ -63,6 +63,8 @@ JWT_SECRET=your_jwt_secret
 MONITORING_TOKEN=your_monitoring_token
 CORS_ORIGINS=https://your-domain.com
 FRONTEND_URL=https://your-domain.com
+# Encrypted Storage (optional)
+ENCRYPTED_STORAGE_PATH=/media/frnd14/DEMO
 ```
 
 ---

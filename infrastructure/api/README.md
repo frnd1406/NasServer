@@ -512,6 +512,69 @@ make security-scan
 
 ---
 
+## 🔐 ENCRYPTION (Phase 2.3 - IMPLEMENTED)
+
+### Zero-Knowledge Architecture
+
+NAS.AI implements application-layer encryption using:
+- **AES-256-GCM** for symmetric encryption
+- **Argon2id** for key derivation
+- **Zero-Knowledge** - Master password never stored
+
+### Key Hierarchy
+
+```
+Master Password (user-only, never stored)
+    └── KEK (Key Encryption Key, via Argon2id)
+        └── DEK (Data Encryption Key, RAM-only)
+            └── FILE_KEY, DB_KEY, BACKUP_KEY
+```
+
+### Vault API Endpoints
+
+```yaml
+# Public (auth required)
+GET  /api/v1/vault/status    # { locked, configured, vaultPath }
+GET  /api/v1/vault/config    # { vaultPath, configured }
+
+# Protected (auth + CSRF)
+POST /api/v1/system/vault/setup   # Initialize with masterPassword
+POST /api/v1/system/vault/unlock  # Unlock vault
+POST /api/v1/system/vault/lock    # Lock vault (wipes DEK)
+PUT  /api/v1/system/vault/config  # Update vault path
+```
+
+### Encrypted Storage API
+
+```yaml
+GET    /api/v1/encrypted/status   # Encryption status
+GET    /api/v1/encrypted/files    # List encrypted files
+POST   /api/v1/encrypted/upload   # Encrypt & save file
+GET    /api/v1/encrypted/download # Decrypt & download
+GET    /api/v1/encrypted/preview  # Decrypt for preview
+DELETE /api/v1/encrypted/delete   # Delete encrypted file
+```
+
+**Encrypted Storage Path:** `/media/frnd14/DEMO`
+
+### Vault Guard Middleware
+
+The `VaultGuard` middleware blocks access to protected routes when vault is locked:
+- Returns `HTTP 423 Locked` with JSON error
+- Protects `/api/v1/encrypted/*` endpoints
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `services/encryption_service.go` | Core encryption logic |
+| `services/encrypted_storage.go` | Storage wrapper |
+| `handlers/vault.go` | Vault API handlers |
+| `handlers/encrypted_storage.go` | Encrypted storage handlers |
+| `middleware/vault_guard.go` | Vault state middleware |
+
+---
+
 ## API CONTRACTS
 
 ### Authentication
