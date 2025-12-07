@@ -342,3 +342,31 @@ export async function searchFiles(query) {
 
   return response;
 }
+
+/**
+ * Unified AI Query - AI decides whether to search or answer
+ * @param {string} query - User query (question or search)
+ * @returns {Promise<{
+ *   mode: "search" | "answer",
+ *   intent: { type: string, count_hint: string, limit: number },
+ *   files?: Array<{ file_id: string, file_path: string, content: string, similarity: number }>,
+ *   answer?: string,
+ *   sources?: Array<{ file_id: string, file_path: string, similarity: number }>,
+ *   confidence?: string,
+ *   query: string
+ * }>}
+ */
+export async function queryAI(query) {
+  if (!query || !query.trim()) {
+    throw new Error("Query is required");
+  }
+
+  const response = await apiRequest("/api/v1/query", {
+    method: "POST",
+    body: JSON.stringify({ query: query.trim() }),
+    timeout: 60000, // 60s timeout for AI processing
+  });
+
+  return response;
+}
+

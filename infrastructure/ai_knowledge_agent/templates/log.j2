@@ -1,9 +1,0 @@
-Server Log: {{ log.server_name }}
-Generated: {{ log.log_date.strftime('%Y-%m-%d') }}
-
-{% for entry in log.entries %}
-[{{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}] [{{ entry.level }}] [{{ entry.server }}] {{ entry.message }}
-{% endfor %}
-
-Total Entries: {{ log.entries|length }}
-Server Uptime: {{ log.uptime_hours }} hours

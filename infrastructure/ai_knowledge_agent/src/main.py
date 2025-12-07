@@ -12,6 +12,12 @@ from psycopg2 import pool, OperationalError
 from pgvector.psycopg2 import register_vector
 import numpy as np
 
+# Support both container (src.intent_classifier) and local execution
+try:
+    from src.intent_classifier import classify_intent, get_limit_for_intent
+except ImportError:
+    from intent_classifier import classify_intent, get_limit_for_intent
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("ai_knowledge_agent")
@@ -193,11 +199,32 @@ def prewarm_models():
     global model_loaded
     logger.info("Pre-warming Ollama models...")
     
+    # Import classifier model name
+    try:
+        from src.intent_classifier import CLASSIFIER_MODEL
+    except ImportError:
+        from intent_classifier import CLASSIFIER_MODEL
+    
     try:
         # Pre-warm embedding model
         logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
         _ = get_ollama_embedding("Warmup test for embedding model.")
         logger.info("✅ Embedding model loaded and ready")
+        
+        # Pre-warm classifier model (small, fast)
+        logger.info("Loading classifier model: %s", CLASSIFIER_MODEL)
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": CLASSIFIER_MODEL,
+                "prompt": "Hello",
+                "stream": False,
+                "options": {"num_predict": 1}
+            },
+            timeout=120
+        )
+        response.raise_for_status()
+        logger.info("✅ Classifier model loaded and ready")
         
         # Pre-warm LLM model with a simple prompt
         logger.info("Loading LLM model: %s", LLM_MODEL)
@@ -215,7 +242,7 @@ def prewarm_models():
         logger.info("✅ LLM model loaded and ready")
         
         model_loaded = True
-        logger.info("🚀 All models pre-warmed and ready for instant responses!")
+        logger.info("🚀 All 3 models pre-warmed and ready for instant responses!")
         return True
         
     except Exception as e:
@@ -455,6 +482,78 @@ def health():
     })
 
 
+@app.route("/status", methods=["GET"])
+def status():
+    """Comprehensive status endpoint for Settings page."""
+    try:
+        from src.intent_classifier import CLASSIFIER_MODEL
+    except ImportError:
+        from intent_classifier import CLASSIFIER_MODEL
+    
+    # Get Ollama models
+    ollama_models = []
+    ollama_connected = False
+    try:
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            ollama_connected = True
+            ollama_models = [m["name"] for m in resp.json().get("models", [])]
+    except Exception:
+        pass
+    
+    # Get index stats from database
+    total_files = 0
+    indexed_files = 0
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM file_embeddings")
+                indexed_files = cur.fetchone()[0]
+    except Exception:
+        pass
+    
+    return jsonify({
+        "ollama": {
+            "connected": ollama_connected,
+            "url": OLLAMA_URL,
+            "models": ollama_models
+        },
+        "models": {
+            "embedding": EMBEDDING_MODEL,
+            "classifier": CLASSIFIER_MODEL,
+            "llm": LLM_MODEL
+        },
+        "index": {
+            "total_files": total_files,
+            "indexed_files": indexed_files
+        },
+        "settings": {
+            "auto_index": True,
+            "embedding_dim": EMBEDDING_DIM
+        }
+    })
+
+
+@app.route("/reindex", methods=["POST"])
+def reindex():
+    """Trigger re-indexing of all files."""
+    try:
+        # Run auto-indexing in background
+        import threading
+        def do_reindex():
+            auto_index_files()
+        
+        thread = threading.Thread(target=do_reindex)
+        thread.start()
+        
+        return jsonify({
+            "status": "started",
+            "message": "Re-indexing started in background"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/process", methods=["POST"])
 def process_file():
     """Process an uploaded file and generate embeddings via Ollama."""
@@ -662,6 +761,137 @@ def rag_query():
 
     except Exception as e:
         logger.error("RAG error: %s", str(e), exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/query", methods=["POST"])
+def unified_query():
+    """
+    Unified Query Endpoint - AI decides routing and limit.
+    
+    Flow:
+    1. Intent Classification (Llama or heuristics)
+    2. Dynamic Search with variable limit
+    3. Return either Search-Results OR RAG-Answer
+    
+    Request:
+        {"query": "user input string"}
+    
+    Response for search mode:
+        {
+            "mode": "search",
+            "intent": {...},
+            "files": [...],
+            "query": "original query"
+        }
+    
+    Response for question mode:
+        {
+            "mode": "answer",
+            "intent": {...},
+            "answer": "AI generated answer",
+            "sources": [...],
+            "confidence": "HOCH|MITTEL|NIEDRIG",
+            "query": "original query"
+        }
+    """
+    if not model_loaded:
+        return jsonify({"error": "Ollama not loaded"}), 503
+
+    try:
+        data = request.get_json()
+        query = data.get("query", "").strip()
+
+        if not query:
+            return jsonify({"error": "Missing 'query' field"}), 400
+
+        logger.info("Unified query: %s", query[:100])
+
+        # Step 1: Intent Classification
+        intent = classify_intent(query)
+        logger.info("Intent classified: type=%s, count_hint=%s, limit=%d", 
+                   intent["type"], intent["count_hint"], intent["limit"])
+
+        # Use refined query if available, otherwise original
+        search_query = intent.get("refined_query") or query
+        limit = intent["limit"]
+
+        # Step 2: Get query embedding
+        query_embedding = get_ollama_embedding(search_query)
+
+        # Step 3: Vector search with dynamic limit
+        with get_db_connection() as conn:
+            register_vector(conn)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT file_id, content, metadata,
+                           1 - (embedding <=> %s::vector) as similarity
+                    FROM file_embeddings
+                    WHERE (metadata->>'file_path') LIKE '/mnt/data/%%'
+                      AND (metadata->>'file_path') NOT LIKE '%%/.trash/%%'
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s
+                """, (query_embedding, query_embedding, limit))
+
+                docs = []
+                for row in cur.fetchall():
+                    metadata = row[2] or {}
+                    docs.append({
+                        "file_id": row[0],
+                        "file_path": metadata.get("file_path", "unknown"),
+                        "content": row[1],
+                        "similarity": float(row[3])
+                    })
+
+        # Step 4: Route based on intent type
+        if intent["type"] == "question":
+            # RAG mode: Generate AI answer
+            if not docs:
+                return jsonify({
+                    "mode": "answer",
+                    "intent": intent,
+                    "answer": "Keine relevanten Dokumente gefunden.",
+                    "sources": [],
+                    "confidence": "NIEDRIG",
+                    "query": query
+                })
+
+            logger.info("Generating RAG response with %d documents", len(docs))
+            llama_result = get_llama_response(query, docs)
+
+            return jsonify({
+                "mode": "answer",
+                "intent": intent,
+                "answer": llama_result["answer"],
+                "sources": llama_result["cited_sources"],
+                "confidence": llama_result["confidence"],
+                "all_candidates": len(docs),
+                "query": query,
+                "model": LLM_MODEL
+            })
+
+        else:
+            # Search mode: Return file results
+            # Truncate content for response
+            files = []
+            for doc in docs:
+                files.append({
+                    "file_id": doc["file_id"],
+                    "file_path": doc["file_path"],
+                    "content": doc["content"][:500],
+                    "similarity": doc["similarity"]
+                })
+
+            return jsonify({
+                "mode": "search",
+                "intent": intent,
+                "files": files,
+                "total_found": len(files),
+                "query": query
+            })
+
+    except Exception as e:
+        logger.error("Unified query error: %s", str(e), exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 

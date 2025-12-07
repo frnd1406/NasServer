@@ -234,8 +234,15 @@ func main() {
 		v1.POST("/system/alerts", handlers.SystemAlertCreateHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts/:id/resolve", handlers.SystemAlertResolveHandler(systemAlertsRepo, logger))
 		v1.GET("/search", handlers.SearchHandler(db, cfg.AIServiceURL, aiHTTPClient, logger))
+		v1.POST("/query", handlers.UnifiedQueryHandler(cfg.AIServiceURL, &http.Client{Timeout: 60 * time.Second}, logger))
 		v1.GET("/ask", handlers.AskHandler(db, cfg.AIServiceURL, cfg.OllamaURL, cfg.LLMModel, nil, logger))
 		v1.GET("/files/content", handlers.FileContentHandler(logger))
+
+		// AI Settings endpoints
+		v1.GET("/ai/status", handlers.AIStatusHandler(cfg.AIServiceURL, aiHTTPClient, logger))
+		v1.GET("/ai/settings", handlers.AISettingsGetHandler(logger))
+		v1.POST("/ai/settings", handlers.AISettingsSaveHandler(logger))
+		v1.POST("/ai/reindex", handlers.AIReindexHandler(cfg.AIServiceURL, aiHTTPClient, logger))
 	}
 
 	settingsV1 := v1.Group("/system")

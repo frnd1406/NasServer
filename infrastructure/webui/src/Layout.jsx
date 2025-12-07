@@ -99,8 +99,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
 
   const navLinks = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/ai", label: "AI Assistant", icon: Brain },
-    { to: "/search", label: "Semantic Search", icon: Search },
+    { to: "/search", label: "AI Knowledge", icon: Brain },
     { to: "/metrics", label: "Metrics", icon: Activity },
     { to: "/files", label: "Files & Storage", icon: FolderOpen },
     { to: "/backups", label: "Backups", icon: Database },

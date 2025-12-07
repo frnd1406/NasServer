@@ -25,7 +25,14 @@ import {
     Power,
     PowerOff,
     Globe,
-    FileText
+    FileText,
+    Brain,
+    Zap,
+    Thermometer,
+    FolderSync,
+    TestTube,
+    CircleCheck,
+    CircleX
 } from "lucide-react";
 import { useTheme } from "../components/ThemeToggle";
 import { useToast } from "../components/Toast";
@@ -158,6 +165,7 @@ export default function Settings() {
 
     const tabs = [
         { id: "profile", label: "Profil", icon: User },
+        { id: "ai", label: "AI", icon: Brain },
         { id: "appearance", label: "Erscheinung", icon: Palette },
         { id: "admin", label: "Admin", icon: Shield, adminOnly: true },
         { id: "about", label: "Über", icon: Info }
@@ -314,6 +322,11 @@ export default function Settings() {
                                 </div>
                             </GlassCard>
                         </div>
+                    )}
+
+                    {/* AI Settings Section */}
+                    {activeTab === "ai" && (
+                        <AISettingsTab />
                     )}
 
                     {/* Appearance Section */}
@@ -576,8 +589,8 @@ function AdminTabContent() {
                     <button
                         onClick={toggleMaintenanceMode}
                         className={`px-4 py-2 rounded-xl font-medium transition-all ${settings.maintenance_mode
-                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                             }`}
                     >
                         {settings.maintenance_mode ? "Deaktivieren" : "Aktivieren"}
@@ -612,8 +625,8 @@ function AdminTabContent() {
                                     <td className="py-3 px-4 text-slate-400">{user.email}</td>
                                     <td className="py-3 px-4">
                                         <span className={`px-2 py-1 rounded-lg text-xs font-medium ${user.role === "admin"
-                                                ? "bg-violet-500/20 text-violet-400"
-                                                : "bg-slate-500/20 text-slate-400"
+                                            ? "bg-violet-500/20 text-violet-400"
+                                            : "bg-slate-500/20 text-slate-400"
                                             }`}>
                                             {user.role}
                                         </span>
@@ -659,3 +672,432 @@ function AdminTabContent() {
     );
 }
 
+// AI Settings Tab Component
+function AISettingsTab() {
+    const toast = useToast();
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [testingConnection, setTestingConnection] = useState(false);
+    const [reindexing, setReindexing] = useState(false);
+
+    const [settings, setSettings] = useState({
+        llm_model: "llama3.2",
+        classifier_model: "llama3.2:1b",
+        embedding_model: "mxbai-embed-large",
+        temperature: 0.7,
+        max_tokens: 500,
+        context_documents: 10,
+        auto_index: true,
+        index_interval: 30,
+        ollama_url: "http://host.docker.internal:11434"
+    });
+
+    const [ollamaStatus, setOllamaStatus] = useState({
+        connected: false,
+        models: []
+    });
+
+    const [indexStats, setIndexStats] = useState({
+        total_files: 0,
+        indexed_files: 0,
+        last_index: null
+    });
+
+    useEffect(() => {
+        loadAISettings();
+    }, []);
+
+    const loadAISettings = async () => {
+        setLoading(true);
+        try {
+            // Get AI settings from backend
+            const settingsData = await apiRequest("/api/v1/ai/settings", { method: "GET" });
+            if (settingsData) {
+                setSettings(prev => ({ ...prev, ...settingsData }));
+            }
+        } catch (err) {
+            console.log("Using default AI settings");
+        }
+
+        // Get comprehensive status from AI agent (includes Ollama + index stats)
+        await loadAIStatus();
+
+        setLoading(false);
+    };
+
+    const loadAIStatus = async () => {
+        setTestingConnection(true);
+        try {
+            const data = await apiRequest("/api/v1/ai/status", { method: "GET" });
+            if (data) {
+                // Update Ollama status
+                if (data.ollama) {
+                    setOllamaStatus({
+                        connected: data.ollama.connected,
+                        models: data.ollama.models || []
+                    });
+                }
+                // Update index stats
+                if (data.index) {
+                    setIndexStats({
+                        total_files: data.index.total_files || 0,
+                        indexed_files: data.index.indexed_files || 0,
+                        last_index: null
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Failed to load AI status:", err);
+            setOllamaStatus({ connected: false, models: [] });
+        }
+        setTestingConnection(false);
+    };
+
+    const testOllamaConnection = async () => {
+        // Use the backend proxy to test Ollama connection
+        await loadAIStatus();
+    };
+
+    const loadIndexStats = async () => {
+        // Already loaded via loadAIStatus
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await apiRequest("/api/v1/ai/settings", {
+                method: "POST",
+                body: JSON.stringify(settings)
+            });
+            toast.success("AI-Einstellungen gespeichert");
+        } catch (err) {
+            toast.error("Fehler beim Speichern");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReindex = async () => {
+        setReindexing(true);
+        try {
+            await apiRequest("/api/v1/ai/reindex", { method: "POST" });
+            toast.success("Re-Indexierung gestartet");
+            // Reload stats after a delay
+            setTimeout(loadIndexStats, 3000);
+        } catch (err) {
+            toast.error("Fehler beim Starten der Indexierung");
+        } finally {
+            setReindexing(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 size={48} className="text-violet-400 animate-spin" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Model Selection */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Brain}
+                    title="Modell-Auswahl"
+                    description="Wähle die AI-Modelle für verschiedene Aufgaben"
+                />
+
+                <div className="space-y-4">
+                    {/* LLM Model */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Antwort-Modell (RAG)
+                        </label>
+                        <select
+                            value={settings.llm_model}
+                            onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-800/50 border border-white/10 rounded-xl text-white focus:border-violet-500/50 focus:outline-none"
+                        >
+                            <option value="llama3.2">Llama 3.2 (Standard)</option>
+                            <option value="qwen2.5:3b">Qwen 2.5 3B</option>
+                            <option value="mistral">Mistral 7B</option>
+                        </select>
+                        <p className="text-xs text-slate-500 mt-1">Für AI-Antworten und Zusammenfassungen</p>
+                    </div>
+
+                    {/* Classifier Model */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Klassifikator-Modell
+                        </label>
+                        <select
+                            value={settings.classifier_model}
+                            onChange={(e) => setSettings({ ...settings, classifier_model: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-800/50 border border-white/10 rounded-xl text-white focus:border-violet-500/50 focus:outline-none"
+                        >
+                            <option value="llama3.2:1b">Llama 3.2 1B (Schnell)</option>
+                            <option value="heuristic">Nur Heuristik (Kein LLM)</option>
+                        </select>
+                        <p className="text-xs text-slate-500 mt-1">Für Intent-Erkennung (Suche vs. Frage)</p>
+                    </div>
+
+                    {/* Embedding Model */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Embedding-Modell
+                        </label>
+                        <select
+                            value={settings.embedding_model}
+                            onChange={(e) => setSettings({ ...settings, embedding_model: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-800/50 border border-white/10 rounded-xl text-white focus:border-violet-500/50 focus:outline-none"
+                        >
+                            <option value="mxbai-embed-large">mxbai-embed-large (Standard)</option>
+                            <option value="nomic-embed-text">nomic-embed-text</option>
+                        </select>
+                        <p className="text-xs text-slate-500 mt-1">Für semantische Suche und Vektoren</p>
+                    </div>
+                </div>
+            </GlassCard>
+
+            {/* Response Settings */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Thermometer}
+                    title="Antwort-Einstellungen"
+                    description="Steuere wie die AI antwortet"
+                />
+
+                <div className="space-y-6">
+                    {/* Temperature */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-sm font-medium text-slate-300">
+                                Kreativität (Temperature)
+                            </label>
+                            <span className="text-violet-400 font-mono">{settings.temperature.toFixed(1)}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={settings.temperature}
+                            onChange={(e) => setSettings({ ...settings, temperature: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                        />
+                        <div className="flex justify-between text-xs text-slate-500 mt-1">
+                            <span>Präzise</span>
+                            <span>Kreativ</span>
+                        </div>
+                    </div>
+
+                    {/* Max Tokens */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-sm font-medium text-slate-300">
+                                Maximale Antwortlänge
+                            </label>
+                            <span className="text-violet-400 font-mono">{settings.max_tokens}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="100"
+                            max="2000"
+                            step="100"
+                            value={settings.max_tokens}
+                            onChange={(e) => setSettings({ ...settings, max_tokens: parseInt(e.target.value) })}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                        />
+                        <div className="flex justify-between text-xs text-slate-500 mt-1">
+                            <span>Kurz (100)</span>
+                            <span>Lang (2000)</span>
+                        </div>
+                    </div>
+
+                    {/* Context Documents */}
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-sm font-medium text-slate-300">
+                                Kontext-Dokumente (RAG)
+                            </label>
+                            <span className="text-violet-400 font-mono">{settings.context_documents}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="3"
+                            max="20"
+                            step="1"
+                            value={settings.context_documents}
+                            onChange={(e) => setSettings({ ...settings, context_documents: parseInt(e.target.value) })}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">Anzahl der Dokumente für RAG-Kontext</p>
+                    </div>
+                </div>
+            </GlassCard>
+
+            {/* Indexing Settings */}
+            <GlassCard>
+                <SectionHeader
+                    icon={FolderSync}
+                    title="Indexierung"
+                    description="Automatische Datei-Indexierung steuern"
+                />
+
+                <div className="space-y-4">
+                    {/* Auto Index Toggle */}
+                    <SettingsRow
+                        label="Auto-Indexierung"
+                        description="Neue Dateien automatisch indexieren"
+                    >
+                        <button
+                            onClick={() => setSettings({ ...settings, auto_index: !settings.auto_index })}
+                            className={`relative w-14 h-8 rounded-full transition-colors ${settings.auto_index ? "bg-violet-500/30" : "bg-slate-700"
+                                }`}
+                        >
+                            <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-lg transition-all ${settings.auto_index ? "left-7" : "left-1"
+                                }`} />
+                        </button>
+                    </SettingsRow>
+
+                    {/* Index Stats */}
+                    <div className="grid grid-cols-3 gap-4 mt-4">
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-xs">Dateien gesamt</p>
+                            <p className="text-white font-mono text-lg">{indexStats.total_files || 0}</p>
+                        </div>
+                        <div className="p-3 bg-violet-500/10 border border-violet-500/20 rounded-lg">
+                            <p className="text-slate-400 text-xs">Indexiert</p>
+                            <p className="text-white font-mono text-lg">{indexStats.indexed_files || 0}</p>
+                        </div>
+                        <div className="p-3 bg-slate-800/30 rounded-lg">
+                            <p className="text-slate-400 text-xs">Letzte Indexierung</p>
+                            <p className="text-white font-mono text-sm">{indexStats.last_index || "—"}</p>
+                        </div>
+                    </div>
+
+                    {/* Reindex Button */}
+                    <button
+                        onClick={handleReindex}
+                        disabled={reindexing}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-xl border border-amber-500/30 transition-all disabled:opacity-50 mt-4"
+                    >
+                        {reindexing ? (
+                            <>
+                                <Loader2 size={18} className="animate-spin" />
+                                <span className="font-medium">Indexiere...</span>
+                            </>
+                        ) : (
+                            <>
+                                <RefreshCw size={18} />
+                                <span className="font-medium">Alle Dateien neu indexieren</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            </GlassCard>
+
+            {/* Ollama Connection */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Server}
+                    title="Ollama Verbindung"
+                    description="LLM-Server Konfiguration"
+                />
+
+                <div className="space-y-4">
+                    {/* Ollama URL */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Ollama URL
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={settings.ollama_url}
+                                onChange={(e) => setSettings({ ...settings, ollama_url: e.target.value })}
+                                className="flex-1 px-4 py-3 bg-slate-800/50 border border-white/10 rounded-xl text-white font-mono focus:border-violet-500/50 focus:outline-none"
+                                placeholder="http://localhost:11434"
+                            />
+                            <button
+                                onClick={testOllamaConnection}
+                                disabled={testingConnection}
+                                className="px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-xl border border-blue-500/30 transition-all disabled:opacity-50"
+                            >
+                                {testingConnection ? (
+                                    <Loader2 size={18} className="animate-spin" />
+                                ) : (
+                                    <TestTube size={18} />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Connection Status */}
+                    <div className={`flex items-center gap-3 p-4 rounded-xl ${ollamaStatus.connected
+                        ? "bg-emerald-500/10 border border-emerald-500/20"
+                        : "bg-rose-500/10 border border-rose-500/20"
+                        }`}>
+                        {ollamaStatus.connected ? (
+                            <>
+                                <CircleCheck size={24} className="text-emerald-400" />
+                                <div>
+                                    <p className="text-emerald-400 font-medium">Verbunden</p>
+                                    <p className="text-slate-400 text-sm">
+                                        {ollamaStatus.models.length} Modelle verfügbar
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <CircleX size={24} className="text-rose-400" />
+                                <div>
+                                    <p className="text-rose-400 font-medium">Nicht verbunden</p>
+                                    <p className="text-slate-400 text-sm">Prüfe die Ollama URL</p>
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Available Models */}
+                    {ollamaStatus.connected && ollamaStatus.models.length > 0 && (
+                        <div>
+                            <p className="text-sm font-medium text-slate-300 mb-2">Verfügbare Modelle</p>
+                            <div className="flex flex-wrap gap-2">
+                                {ollamaStatus.models.map((model, idx) => (
+                                    <span
+                                        key={idx}
+                                        className="px-3 py-1 bg-slate-800/50 border border-white/10 rounded-lg text-sm text-slate-300 font-mono"
+                                    >
+                                        {model}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </GlassCard>
+
+            {/* Save Button */}
+            <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white rounded-xl shadow-lg shadow-violet-500/20 transition-all disabled:opacity-50"
+            >
+                {saving ? (
+                    <>
+                        <Loader2 size={20} className="animate-spin" />
+                        <span className="font-medium">Speichern...</span>
+                    </>
+                ) : (
+                    <>
+                        <Save size={20} />
+                        <span className="font-medium">Einstellungen speichern</span>
+                    </>
+                )}
+            </button>
+        </div>
+    );
+}

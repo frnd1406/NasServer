@@ -10,7 +10,6 @@ import Dashboard from "./pages/Dashboard";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 import FilePreviewDemo from "./pages/FilePreviewDemo";
-import AIAssistant from "./pages/AIAssistant";
 import ErrorFallback from "./components/ErrorFallback";
 import logger from "./utils/logger";
 
@@ -40,7 +39,7 @@ export default function App() {
             <Route path="metrics" element={<Metrics />} />
             <Route path="backups" element={<Backup />} />
             <Route path="settings" element={<Settings />} />
-            <Route path="ai" element={<AIAssistant />} />
+            <Route path="ai" element={<Navigate to="/search" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

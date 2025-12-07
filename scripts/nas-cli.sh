@@ -138,6 +138,50 @@ function deploy_full() {
     wait_for_enter
 }
 
+# MODUL: CLEAN RESTART (No Cache, Force Recreate)
+function clean_restart() {
+    echo -e "${RED}🔥 CLEAN RESTART - Keine Caches, Alles Neu!${NC}"
+    echo -e "${YELLOW}>> Dies baut alle Images ohne Cache neu und startet Container frisch.${NC}"
+    echo ""
+    
+    # Step 1: Stop all containers
+    echo -e "${CYAN}[1/4] Stoppe alle Container...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans
+    
+    # Step 2: Build without cache
+    echo -e "${CYAN}[2/4] Baue Images OHNE Cache (kann dauern)...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --no-cache
+    
+    # Step 3: Pull latest external images
+    echo -e "${CYAN}[3/4] Hole neueste externe Images...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull --ignore-pull-failures || true
+    
+    # Step 4: Force recreate all containers
+    echo -e "${CYAN}[4/4] Starte alle Container NEU (force-recreate)...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+    
+    echo -e "${GREEN}✅ CLEAN RESTART abgeschlossen!${NC}"
+    echo -e "${CYAN}>> Alle Services laufen mit frischen Images.${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+    wait_for_enter
+}
+
+# MODUL: QUICK REBUILD (With Cache, Force Recreate)
+function quick_rebuild() {
+    echo -e "${YELLOW}⚡ QUICK REBUILD - Mit Cache, aber Force Recreate${NC}"
+    echo ""
+    
+    echo -e "${CYAN}[1/2] Baue Images (mit Cache)...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+    
+    echo -e "${CYAN}[2/2] Starte alle Container NEU...${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
+    
+    echo -e "${GREEN}✅ Quick Rebuild abgeschlossen!${NC}"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
+    wait_for_enter
+}
+
 # MODUL: API TESTING
 function test_api_endpoint() {
     local method=$1
@@ -414,17 +458,33 @@ function menu_deployment() {
     while true; do
         show_header
         echo -e "${YELLOW}MODULE: DEPLOYMENT${NC}"
-        echo "  1) 🚀 Full Prod Deployment (Rebuild All)"
-        echo "  2) 🔄 Restart Backend (API Only)"
-        echo "  3) 🌐 Restart Frontend (WebUI)"
+        echo ""
+        echo -e "  ${CYAN}[FULL RESTART]${NC}"
+        echo -e "  1) 🔥 Clean Restart (NO CACHE - Alles Neu)"
+        echo -e "  2) ⚡ Quick Rebuild (Mit Cache, Force Recreate)"
+        echo ""
+        echo -e "  ${CYAN}[SERVICES]${NC}"
+        echo -e "  3) 🚀 Full Prod Deployment (Standard)"
+        echo -e "  4) 🔄 Restart Backend (API Only)"
+        echo -e "  5) 🌐 Restart Frontend (WebUI)"
+        echo -e "  6) 🧠 Restart AI Agent"
+        echo ""
+        echo -e "  ${CYAN}[STATUS]${NC}"
+        echo -e "  7) 📊 Service Status anzeigen"
+        echo ""
         echo "  0) 🔙 Zurück"
         echo ""
         read -p "nas-ai/deploy > " c
         case $c in
-            1) deploy_full ;;
-            2) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart api; wait_for_enter ;;
-            3) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart webui; wait_for_enter ;;
+            1) clean_restart ;;
+            2) quick_rebuild ;;
+            3) deploy_full ;;
+            4) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart api; wait_for_enter ;;
+            5) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build webui && docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate webui; wait_for_enter ;;
+            6) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" restart ai-knowledge-agent; wait_for_enter ;;
+            7) docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps; wait_for_enter ;;
             0) return ;;
+            *) echo "Ungültig." ;;
         esac
     done
 }
