@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  HardDrive, Shield, Brain, ChevronRight, ChevronLeft, 
+import {
+  HardDrive, Shield, Brain, ChevronRight, ChevronLeft,
   Check, Loader2, FolderOpen, Lock, Unlock, Sparkles,
   Server, AlertCircle
 } from 'lucide-react';
-import { useToast } from '../contexts/ToastContext';
-import { apiRequest } from '../utils/api';
+import { useToast } from '../components/Toast';
+import { apiRequest } from '../lib/api';
 
 const API_BASE = window.location.origin;
 
@@ -15,13 +15,12 @@ const StepIndicator = ({ currentStep, steps }) => (
   <div className="flex items-center justify-center gap-2 mb-8">
     {steps.map((step, idx) => (
       <React.Fragment key={step.id}>
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${
-          idx === currentStep 
-            ? 'bg-blue-500/20 border border-blue-500/30 text-blue-400' 
-            : idx < currentStep 
-              ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
-              : 'bg-slate-800/50 border border-white/10 text-slate-500'
-        }`}>
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all ${idx === currentStep
+          ? 'bg-blue-500/20 border border-blue-500/30 text-blue-400'
+          : idx < currentStep
+            ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'
+            : 'bg-slate-800/50 border border-white/10 text-slate-500'
+          }`}>
           {idx < currentStep ? (
             <Check size={16} />
           ) : (
@@ -89,11 +88,10 @@ const StorageStep = ({ config, setConfig }) => {
           <button
             key={opt.path}
             onClick={() => handlePathChange(opt.path)}
-            className={`p-4 rounded-xl border text-left transition-all ${
-              customPath === opt.path
-                ? 'bg-blue-500/20 border-blue-500/30'
-                : 'bg-slate-800/30 border-white/10 hover:border-white/20'
-            }`}
+            className={`p-4 rounded-xl border text-left transition-all ${customPath === opt.path
+              ? 'bg-blue-500/20 border-blue-500/30'
+              : 'bg-slate-800/30 border-white/10 hover:border-white/20'
+              }`}
           >
             <div className="flex items-center gap-3 mb-2">
               <FolderOpen size={20} className={customPath === opt.path ? 'text-blue-400' : 'text-slate-500'} />
@@ -159,13 +157,12 @@ const EncryptionStep = ({ config, setConfig }) => {
 
   return (
     <div className="space-y-6">
-      <div 
+      <div
         onClick={handleToggle}
-        className={`p-6 rounded-xl border cursor-pointer transition-all ${
-          config.encryptionEnabled
-            ? 'bg-amber-500/10 border-amber-500/30'
-            : 'bg-slate-800/30 border-white/10 hover:border-white/20'
-        }`}
+        className={`p-6 rounded-xl border cursor-pointer transition-all ${config.encryptionEnabled
+          ? 'bg-amber-500/10 border-amber-500/30'
+          : 'bg-slate-800/30 border-white/10 hover:border-white/20'
+          }`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -183,12 +180,10 @@ const EncryptionStep = ({ config, setConfig }) => {
               </p>
             </div>
           </div>
-          <div className={`w-14 h-8 rounded-full transition-colors ${
-            config.encryptionEnabled ? 'bg-amber-500/30' : 'bg-slate-700'
-          }`}>
-            <div className={`w-6 h-6 rounded-full bg-white shadow-lg transition-all mt-1 ${
-              config.encryptionEnabled ? 'ml-7' : 'ml-1'
-            }`} />
+          <div className={`w-14 h-8 rounded-full transition-colors ${config.encryptionEnabled ? 'bg-amber-500/30' : 'bg-slate-700'
+            }`}>
+            <div className={`w-6 h-6 rounded-full bg-white shadow-lg transition-all mt-1 ${config.encryptionEnabled ? 'ml-7' : 'ml-1'
+              }`} />
           </div>
         </div>
       </div>
@@ -252,11 +247,10 @@ const AIModelStep = ({ config, setConfig, ollamaStatus }) => {
   return (
     <div className="space-y-6">
       {/* Ollama Status */}
-      <div className={`p-4 rounded-xl flex items-center gap-3 ${
-        connected 
-          ? 'bg-emerald-500/10 border border-emerald-500/20' 
-          : 'bg-rose-500/10 border border-rose-500/20'
-      }`}>
+      <div className={`p-4 rounded-xl flex items-center gap-3 ${connected
+        ? 'bg-emerald-500/10 border border-emerald-500/20'
+        : 'bg-rose-500/10 border border-rose-500/20'
+        }`}>
         <Server size={20} className={connected ? 'text-emerald-400' : 'text-rose-400'} />
         <div>
           <p className={`font-medium ${connected ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -330,7 +324,7 @@ export default function Setup() {
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState({ connected: false, models: [] });
-  
+
   const [config, setConfig] = useState({
     storagePath: '/mnt/data',
     encryptionEnabled: false,
@@ -429,7 +423,7 @@ export default function Setup() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ models: [config.aiModels.llm, config.aiModels.embedding] })
-      }).catch(() => {});
+      }).catch(() => { });
 
       toast.success('Setup abgeschlossen! 🚀');
       navigate('/dashboard', { replace: true });
@@ -476,8 +470,8 @@ export default function Setup() {
           title={steps[currentStep].label}
           description={
             currentStep === 0 ? 'Wo sollen deine Daten gespeichert werden?' :
-            currentStep === 1 ? 'Möchtest du Zero-Knowledge Verschlüsselung aktivieren?' :
-            'Wähle die AI-Modelle für Suche und Chat'
+              currentStep === 1 ? 'Möchtest du Zero-Knowledge Verschlüsselung aktivieren?' :
+                'Wähle die AI-Modelle für Suche und Chat'
           }
         >
           {currentStep === 0 && (
