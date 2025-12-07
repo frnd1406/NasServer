@@ -49,9 +49,9 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 
 		embedding, err := fetchEmbedding(c.Request.Context(), client, baseURL+"/embed_query", query)
 		if err != nil {
-			logger.WithError(err).Error("Failed to fetch embedding from AI agent")
-			c.JSON(http.StatusBadGateway, gin.H{"error": "embedding service unavailable"})
-			return
+			logger.WithError(err).Warn("Failed to get embedding, falling back to text-only search")
+			// Proceed with empty embedding (will skip vector similarity part in SQL)
+			embedding = make([]float64, 1024)
 		}
 
 		// Convert embedding to pgvector format
@@ -86,7 +86,7 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 			),
 			word_matches AS (
 				SELECT 
-					fe.file_path,
+					fe.metadata->>'file_path' as file_path,
 					fe.content,
 					fe.embedding,
 					COUNT(DISTINCT sw.word) as matched_word_count,
@@ -97,22 +97,22 @@ func SearchHandler(db *database.DB, aiServiceURL string, httpClient *http.Client
 					) as total_word_occurrences
 				FROM file_embeddings fe
 				CROSS JOIN search_words sw
-				WHERE fe.file_path LIKE '/mnt/data/%'
-				  AND fe.file_path NOT LIKE '%/.trash/%'
+				WHERE (fe.metadata->>'file_path') LIKE '/mnt/data/%'
+				  AND (fe.metadata->>'file_path') NOT LIKE '%/.trash/%'
 				  AND lower(fe.content) LIKE '%' || sw.word || '%'
-				GROUP BY fe.file_path, fe.content, fe.embedding
+				GROUP BY fe.metadata->>'file_path', fe.content, fe.embedding
 			),
 			all_docs AS (
 				SELECT 
-					file_path,
+					fe.metadata->>'file_path' as file_path,
 					content,
 					embedding,
 					0 as matched_word_count,
 					0 as total_word_occurrences
-				FROM file_embeddings
-				WHERE file_path LIKE '/mnt/data/%'
-				  AND file_path NOT LIKE '%/.trash/%'
-				  AND file_path NOT IN (SELECT file_path FROM word_matches)
+				FROM file_embeddings fe
+				WHERE (fe.metadata->>'file_path') LIKE '/mnt/data/%'
+				  AND (fe.metadata->>'file_path') NOT LIKE '%/.trash/%'
+				  AND (fe.metadata->>'file_path') NOT IN (SELECT file_path FROM word_matches)
 			),
 			combined AS (
 				SELECT * FROM word_matches

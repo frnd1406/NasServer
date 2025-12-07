@@ -9,7 +9,8 @@ services:
       POSTGRES_USER: nas_user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U nas_user -d nas_db" ]
       interval: 5s
@@ -183,7 +184,7 @@ services:
       - nas-network
       - agent-network
     volumes:
-      - /mnt/data:/mnt/data # Bind mount to host /mnt/data
+      - nas_data:/mnt/data # Shared volume with API
     deploy:
       resources:
         limits:
@@ -192,6 +193,10 @@ services:
           memory: 2g
 
 volumes:
+  postgres_data_prod:
+    driver: local
+  postgres_data_new:
+    driver: local
   postgres_data:
     driver: local
   redis_data:

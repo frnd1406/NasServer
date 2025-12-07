@@ -1,0 +1,1 @@
+NAS.AI ist ein intelligentes Speichersystem, das Dokumente automatisch analysiert und durchsuchbar macht. Es nutzt Llama 3.2 und mxbai-embed-large für RAG.

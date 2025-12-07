@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import json
+import threading
 from contextlib import contextmanager
 
 import requests
@@ -42,7 +43,7 @@ def get_ollama_embedding(text: str) -> list:
         response = requests.post(
             f"{OLLAMA_URL}/api/embeddings",
             json={"model": EMBEDDING_MODEL, "prompt": text},
-            timeout=30
+            timeout=300
         )
         response.raise_for_status()
         return response.json()["embedding"]
@@ -107,7 +108,7 @@ Analysiere die Dokumente und antworte im vorgegebenen Format:"""
                 "stream": False,
                 "options": {"temperature": 0.2, "num_predict": 800}
             },
-            timeout=120
+            timeout=600
         )
         response.raise_for_status()
         raw_response = response.json()["response"]
@@ -168,7 +169,7 @@ def check_ollama_health():
     """Check if Ollama is available and models are loaded."""
     global model_loaded
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=300)
         if response.status_code == 200:
             models = [m["name"] for m in response.json().get("models", [])]
             embed_ok = any(EMBEDDING_MODEL in m for m in models)
@@ -183,6 +184,182 @@ def check_ollama_health():
         logger.error("Ollama health check failed: %s", e)
         model_loaded = False
     return False
+
+
+def prewarm_models():
+    """Pre-warm Ollama models by making dummy requests at startup.
+    This forces Ollama to load models into memory so first user request is fast.
+    """
+    global model_loaded
+    logger.info("Pre-warming Ollama models...")
+    
+    try:
+        # Pre-warm embedding model
+        logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
+        _ = get_ollama_embedding("Warmup test for embedding model.")
+        logger.info("✅ Embedding model loaded and ready")
+        
+        # Pre-warm LLM model with a simple prompt
+        logger.info("Loading LLM model: %s", LLM_MODEL)
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": LLM_MODEL,
+                "prompt": "Hello",
+                "stream": False,
+                "options": {"num_predict": 1}  # Minimal response
+            },
+            timeout=300
+        )
+        response.raise_for_status()
+        logger.info("✅ LLM model loaded and ready")
+        
+        model_loaded = True
+        logger.info("🚀 All models pre-warmed and ready for instant responses!")
+        return True
+        
+    except Exception as e:
+        logger.error("Model pre-warming failed: %s", e)
+        model_loaded = False
+        return False
+
+
+def background_health_check():
+    """Run periodic health checks and auto-index new files every 30 seconds.
+    - Monitors Ollama availability
+    - Scans for new files and indexes them automatically
+    """
+    global model_loaded
+    while True:
+        time.sleep(30)  # Check every 30 seconds
+        
+        # Health check Ollama
+        try:
+            response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+            if response.status_code == 200:
+                models = [m["name"] for m in response.json().get("models", [])]
+                embed_ok = any(EMBEDDING_MODEL in m for m in models)
+                llm_ok = any(LLM_MODEL in m for m in models)
+                model_loaded = embed_ok and llm_ok
+                if not model_loaded:
+                    logger.warning("Background check: Models missing, attempting re-warm...")
+                    prewarm_models()
+        except Exception as e:
+            logger.warning("Background health check failed: %s", e)
+            model_loaded = False
+        
+        # Auto-index new files
+        if model_loaded and db_pool:
+            try:
+                new_files = index_all_files()
+                if new_files > 0:
+                    logger.info("🆕 Auto-indexed %d new files", new_files)
+            except Exception as e:
+                logger.warning("Background auto-index failed: %s", e)
+
+
+def start_background_health_check():
+    """Start the background health check thread."""
+    thread = threading.Thread(target=background_health_check, daemon=True)
+    thread.start()
+    logger.info("Background health check thread started")
+
+
+def index_all_files(data_dir="/mnt/data"):
+    """Scan and index all text files in the data directory.
+    This runs at startup to ensure all files are searchable.
+    """
+    if not model_loaded:
+        logger.warning("Cannot index files - models not loaded")
+        return 0
+    
+    if not os.path.exists(data_dir):
+        logger.warning("Data directory does not exist: %s", data_dir)
+        return 0
+    
+    # Supported file extensions
+    TEXT_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.log', '.xml', '.html', '.py', '.js', '.go', '.sh'}
+    
+    indexed_count = 0
+    skipped_count = 0
+    
+    logger.info("📂 Starting auto-indexing of files in %s...", data_dir)
+    
+    # Get already indexed files from database
+    existing_files = set()
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT file_id FROM file_embeddings")
+                existing_files = {row[0] for row in cur.fetchall()}
+        logger.info("Found %d already indexed files", len(existing_files))
+    except Exception as e:
+        logger.warning("Could not check existing files: %s", e)
+    
+    # Walk through all files
+    for root, dirs, files in os.walk(data_dir):
+        # Skip hidden directories and trash
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != '.trash']
+        
+        for filename in files:
+            # Skip hidden files
+            if filename.startswith('.'):
+                continue
+                
+            file_path = os.path.join(root, filename)
+            file_ext = os.path.splitext(filename)[1].lower()
+            
+            # Skip non-text files
+            if file_ext not in TEXT_EXTENSIONS:
+                continue
+            
+            # Skip already indexed files
+            if filename in existing_files:
+                skipped_count += 1
+                continue
+            
+            try:
+                # Read file content
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                if not content.strip():
+                    continue
+                
+                # Get embedding
+                logger.info("Indexing: %s", filename)
+                embedding = get_ollama_embedding(content[:8000])
+                
+                # Store in database
+                metadata = {
+                    "file_path": file_path,
+                    "mime_type": "text/plain",
+                    "content_length": len(content)
+                }
+                
+                with get_db_connection() as conn:
+                    register_vector(conn)
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO file_embeddings (file_id, chunk_index, content, embedding, metadata)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (file_id, chunk_index) DO UPDATE SET
+                                content = EXCLUDED.content,
+                                embedding = EXCLUDED.embedding,
+                                metadata = EXCLUDED.metadata,
+                                created_at = CURRENT_TIMESTAMP
+                        """, (filename, 0, content, embedding, json.dumps(metadata)))
+                        conn.commit()
+                
+                indexed_count += 1
+                logger.info("✅ Indexed: %s", filename)
+                
+            except Exception as e:
+                logger.error("Failed to index %s: %s", filename, e)
+    
+    logger.info("📊 Auto-indexing complete: %d new files indexed, %d skipped (already indexed)", 
+                indexed_count, skipped_count)
+    return indexed_count
 
 
 def init_db_pool(max_retries=5, base_delay=1.0):
@@ -241,8 +418,11 @@ def init_db_pool(max_retries=5, base_delay=1.0):
 
 @contextmanager
 def get_db_connection():
+    global db_pool
     if not db_pool:
-        raise Exception("Database pool not initialized")
+        logger.warning("Database pool not initialized. Attempting lazy initialization...")
+        if not init_db_pool(max_retries=3):
+             raise Exception("Database pool not initialized (lazy init failed)")
     
     conn = db_pool.getconn()
     try:
@@ -537,14 +717,18 @@ def delete_embeddings():
 
 
 def main():
-    check_ollama_health()
+    prewarm_models()
     init_db_pool()
+    index_all_files()
+    start_background_health_check()
     app.run(host="0.0.0.0", port=5000, debug=False)
 
 
 # === GUNICORN COMPATIBILITY ===
-check_ollama_health()
+prewarm_models()
 init_db_pool()
+index_all_files()
+start_background_health_check()
 
 
 if __name__ == "__main__":

@@ -235,6 +235,7 @@ func main() {
 		v1.POST("/system/alerts/:id/resolve", handlers.SystemAlertResolveHandler(systemAlertsRepo, logger))
 		v1.GET("/search", handlers.SearchHandler(db, cfg.AIServiceURL, aiHTTPClient, logger))
 		v1.GET("/ask", handlers.AskHandler(db, cfg.AIServiceURL, cfg.OllamaURL, cfg.LLMModel, nil, logger))
+		v1.GET("/files/content", handlers.FileContentHandler(logger))
 	}
 
 	settingsV1 := v1.Group("/system")
@@ -317,8 +318,8 @@ func main() {
 	srv := &http.Server{
 		Addr:           "0.0.0.0:" + cfg.Port,
 		Handler:        secureHandler,
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   15 * time.Second,
+		ReadTimeout:    600 * time.Second,
+		WriteTimeout:   600 * time.Second,
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}

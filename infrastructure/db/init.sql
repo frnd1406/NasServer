@@ -111,3 +111,22 @@ CREATE INDEX IF NOT EXISTS idx_system_alerts_open ON system_alerts(is_resolved, 
 
 -- Phase 6: ensure ai_analysis column exists
 ALTER TABLE system_alerts ADD COLUMN IF NOT EXISTS ai_analysis TEXT;
+
+-- Phase 2.1: Vector-DB Integration (1024D)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS file_embeddings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_id VARCHAR(255) NOT NULL,
+    chunk_index INT NOT NULL DEFAULT 0,
+    content TEXT NOT NULL,
+    embedding vector(1024),
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(file_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_file_id ON file_embeddings(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_created_at ON file_embeddings(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_embeddings_embedding_hnsw
+    ON file_embeddings USING hnsw (embedding vector_cosine_ops);
