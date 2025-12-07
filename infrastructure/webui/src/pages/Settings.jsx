@@ -32,7 +32,10 @@ import {
     FolderSync,
     TestTube,
     CircleCheck,
-    CircleX
+    CircleX,
+    KeyRound,
+    Unlock,
+    FolderOpen
 } from "lucide-react";
 import { useTheme } from "../components/ThemeToggle";
 import { useToast } from "../components/Toast";
@@ -165,6 +168,7 @@ export default function Settings() {
 
     const tabs = [
         { id: "profile", label: "Profil", icon: User },
+        { id: "crypto", label: "Crypto / Files", icon: KeyRound },
         { id: "ai", label: "AI", icon: Brain },
         { id: "appearance", label: "Erscheinung", icon: Palette },
         { id: "admin", label: "Admin", icon: Shield, adminOnly: true },
@@ -327,6 +331,11 @@ export default function Settings() {
                     {/* AI Settings Section */}
                     {activeTab === "ai" && (
                         <AISettingsTab />
+                    )}
+
+                    {/* Crypto Settings Section */}
+                    {activeTab === "crypto" && (
+                        <CryptoSettingsTab />
                     )}
 
                     {/* Appearance Section */}
@@ -1101,3 +1110,250 @@ function AISettingsTab() {
         </div>
     );
 }
+
+// Crypto Settings Tab Component
+function CryptoSettingsTab() {
+    const toast = useToast();
+    const [loading, setLoading] = useState(true);
+    const [vaultStatus, setVaultStatus] = useState(null);
+    const [vaultPath, setVaultPath] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [unlocking, setUnlocking] = useState(false);
+    const [masterPassword, setMasterPassword] = useState("");
+
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+
+    useEffect(() => {
+        loadVaultStatus();
+    }, []);
+
+    const loadVaultStatus = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/vault/status`, {
+                credentials: "include",
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setVaultStatus(data);
+                setVaultPath(data.vaultPath || "");
+            }
+        } catch (err) {
+            console.error("Failed to load vault status:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSavePath = async () => {
+        setSaving(true);
+        try {
+            const { data, error } = await apiRequest("/api/v1/system/vault/config", {
+                method: "PUT",
+                body: { vaultPath },
+            });
+            if (error) throw new Error(error);
+            toast.success("Vault-Pfad gespeichert");
+            loadVaultStatus();
+        } catch (err) {
+            toast.error(err.message || "Fehler beim Speichern");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleLock = async () => {
+        try {
+            const { data, error } = await apiRequest("/api/v1/system/vault/lock", {
+                method: "POST",
+            });
+            if (error) throw new Error(error);
+            toast.success("Vault gesperrt");
+            loadVaultStatus();
+        } catch (err) {
+            toast.error(err.message || "Fehler beim Sperren");
+        }
+    };
+
+    const handleUnlock = async () => {
+        if (!masterPassword) {
+            toast.error("Master-Passwort erforderlich");
+            return;
+        }
+        setUnlocking(true);
+        try {
+            const { data, error } = await apiRequest("/api/v1/system/vault/unlock", {
+                method: "POST",
+                body: { masterPassword },
+            });
+            if (error) throw new Error(error);
+            toast.success("Vault entsperrt");
+            setMasterPassword("");
+            loadVaultStatus();
+        } catch (err) {
+            toast.error(err.message || "Falsches Passwort");
+        } finally {
+            setUnlocking(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <Loader2 size={48} className="text-amber-400 animate-spin" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Vault Status */}
+            <GlassCard>
+                <SectionHeader
+                    icon={KeyRound}
+                    title="Vault Status"
+                    description="Zero-Knowledge Verschlüsselung für Ihre Daten"
+                />
+
+                <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl mb-4">
+                    <div className="flex items-center gap-3">
+                        {vaultStatus?.locked ? (
+                            <Lock size={24} className="text-amber-400" />
+                        ) : (
+                            <Unlock size={24} className="text-emerald-400" />
+                        )}
+                        <div>
+                            <p className="text-white font-medium">
+                                {vaultStatus?.locked ? "Vault GESPERRT" : "Vault ENTSPERRT"}
+                            </p>
+                            <p className="text-slate-400 text-sm">
+                                {vaultStatus?.configured ? "Konfiguriert" : "Nicht eingerichtet"}
+                            </p>
+                        </div>
+                    </div>
+                    {vaultStatus?.configured && (
+                        <button
+                            onClick={vaultStatus?.locked ? null : handleLock}
+                            disabled={vaultStatus?.locked}
+                            className={`px-4 py-2 rounded-xl font-medium transition-all ${vaultStatus?.locked
+                                    ? "bg-slate-500/20 text-slate-400 cursor-not-allowed"
+                                    : "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                                }`}
+                        >
+                            {vaultStatus?.locked ? "Gesperrt" : "Sperren"}
+                        </button>
+                    )}
+                </div>
+
+                {/* Unlock Form */}
+                {vaultStatus?.locked && vaultStatus?.configured && (
+                    <div className="p-4 bg-slate-800/20 rounded-xl border border-white/5">
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Master-Passwort zum Entsperren
+                        </label>
+                        <div className="flex gap-3">
+                            <div className="relative flex-1">
+                                <KeyRound size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <input
+                                    type="password"
+                                    value={masterPassword}
+                                    onChange={(e) => setMasterPassword(e.target.value)}
+                                    placeholder="••••••••••••"
+                                    className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-amber-500/50 focus:outline-none transition-all"
+                                />
+                            </div>
+                            <button
+                                onClick={handleUnlock}
+                                disabled={unlocking || !masterPassword}
+                                className="flex items-center gap-2 px-6 py-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-xl font-medium transition-all border border-amber-500/30 disabled:opacity-50"
+                            >
+                                {unlocking ? (
+                                    <Loader2 size={18} className="animate-spin" />
+                                ) : (
+                                    <Unlock size={18} />
+                                )}
+                                <span>Entsperren</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </GlassCard>
+
+            {/* Vault Path Configuration */}
+            <GlassCard>
+                <SectionHeader
+                    icon={FolderOpen}
+                    title="Vault-Pfad"
+                    description="Speicherort für Vault-Dateien (DEK, Salt, Config)"
+                />
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">
+                            Aktueller Pfad
+                        </label>
+                        <div className="relative">
+                            <FolderOpen size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                            <input
+                                type="text"
+                                value={vaultPath}
+                                onChange={(e) => setVaultPath(e.target.value)}
+                                placeholder="/var/lib/nas/vault"
+                                disabled={!vaultStatus?.locked}
+                                className="w-full pl-10 pr-4 py-3 bg-slate-800/50 border border-white/10 rounded-xl text-white focus:border-amber-500/50 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        {!vaultStatus?.locked && (
+                            <p className="text-amber-400 text-sm mt-2 flex items-center gap-1">
+                                <AlertCircle size={14} />
+                                Vault muss gesperrt sein, um Pfad zu ändern
+                            </p>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={handleSavePath}
+                        disabled={saving || !vaultStatus?.locked}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-xl border border-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {saving ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                            <Save size={18} />
+                        )}
+                        <span className="font-medium">Pfad speichern</span>
+                    </button>
+                </div>
+            </GlassCard>
+
+            {/* Encryption Info */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Shield}
+                    title="Verschlüsselung"
+                    description="Details zur verwendeten Verschlüsselung"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                        <p className="text-slate-400 text-sm mb-1">Algorithmus</p>
+                        <p className="text-white font-mono font-medium">AES-256-GCM</p>
+                    </div>
+                    <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                        <p className="text-slate-400 text-sm mb-1">Key Derivation</p>
+                        <p className="text-white font-mono font-medium">Argon2id</p>
+                    </div>
+                    <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                        <p className="text-slate-400 text-sm mb-1">Architektur</p>
+                        <p className="text-white font-mono font-medium">Zero-Knowledge</p>
+                    </div>
+                </div>
+
+                <p className="text-slate-500 text-sm mt-4">
+                    🔒 Ihr Master-Passwort verlässt niemals das System. Alle Schlüssel werden nur im RAM gehalten.
+                </p>
+            </GlassCard>
+        </div>
+    );
+}
+

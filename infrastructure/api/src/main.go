@@ -128,6 +128,32 @@ func main() {
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize backup service")
 	}
+
+	// Initialize encryption service with configurable vault path
+	// Default to /var/lib/nas/vault but can be changed via API
+	vaultPath := "/var/lib/nas/vault"
+	if cfg.Environment != "production" {
+		vaultPath = "/tmp/nas-vault-demo" // Use temp path for development/demo
+	}
+	encryptionService := services.NewEncryptionService(vaultPath)
+	logger.WithField("vaultPath", vaultPath).Info("Encryption service initialized")
+
+	// Initialize encrypted storage service for /media/frnd14/DEMO
+	// Files stored here are encrypted - only visible via web UI when vault is unlocked
+	encryptedStoragePath := "/media/frnd14/DEMO"
+	encryptedStorageService, err := services.NewEncryptedStorageService(
+		storageService,
+		encryptionService,
+		encryptedStoragePath,
+		logger,
+	)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to initialize encrypted storage service (non-fatal)")
+		// Don't fatal - encrypted storage is optional
+	} else {
+		logger.WithField("path", encryptedStoragePath).Info("Encrypted storage service initialized")
+	}
+
 	aiHTTPClient := &http.Client{Timeout: 8 * time.Second}
 
 	// Start backup scheduler in background
@@ -243,6 +269,10 @@ func main() {
 		v1.GET("/ai/settings", handlers.AISettingsGetHandler(logger))
 		v1.POST("/ai/settings", handlers.AISettingsSaveHandler(logger))
 		v1.POST("/ai/reindex", handlers.AIReindexHandler(cfg.AIServiceURL, aiHTTPClient, logger))
+
+		// Vault endpoints (encryption management)
+		v1.GET("/vault/status", handlers.VaultStatusHandler(encryptionService))
+		v1.GET("/vault/config", handlers.VaultConfigGetHandler(encryptionService))
 	}
 
 	settingsV1 := v1.Group("/system")
@@ -254,6 +284,12 @@ func main() {
 		settingsV1.GET("/settings", handlers.SystemSettingsHandler(cfg))
 		settingsV1.PUT("/settings/backup", handlers.UpdateBackupSettingsHandler(cfg, backupService, settingsRepo, logger))
 		settingsV1.POST("/validate-path", handlers.ValidatePathHandler(logger))
+
+		// Protected vault endpoints (require auth)
+		settingsV1.POST("/vault/setup", handlers.VaultSetupHandler(encryptionService, logger))
+		settingsV1.POST("/vault/unlock", handlers.VaultUnlockHandler(encryptionService, logger))
+		settingsV1.POST("/vault/lock", handlers.VaultLockHandler(encryptionService, logger))
+		settingsV1.PUT("/vault/config", handlers.VaultConfigUpdateHandler(encryptionService, logger))
 	}
 
 	storageV1 := r.Group("/api/v1/storage")
@@ -273,6 +309,24 @@ func main() {
 		storageV1.DELETE("/trash/:id", handlers.StorageTrashDeleteHandler(storageService, logger))
 		storageV1.POST("/rename", handlers.StorageRenameHandler(storageService, logger))
 		storageV1.POST("/mkdir", handlers.StorageMkdirHandler(storageService, logger))
+	}
+
+	// Encrypted Storage API (separate from regular storage)
+	// Files in /media/frnd14/DEMO are encrypted and only visible via web UI
+	if encryptedStorageService != nil {
+		encV1 := r.Group("/api/v1/encrypted")
+		encV1.Use(
+			middleware.AuthMiddleware(jwtService, redis, logger),
+			middleware.CSRFMiddleware(redis, logger),
+		)
+		{
+			encV1.GET("/status", handlers.EncryptedStorageStatusHandler(encryptedStorageService))
+			encV1.GET("/files", handlers.EncryptedStorageListHandler(encryptedStorageService, logger))
+			encV1.POST("/upload", handlers.EncryptedStorageUploadHandler(encryptedStorageService, logger))
+			encV1.GET("/download", handlers.EncryptedStorageDownloadHandler(encryptedStorageService, logger))
+			encV1.GET("/preview", handlers.EncryptedStoragePreviewHandler(encryptedStorageService, logger))
+			encV1.DELETE("/delete", handlers.EncryptedStorageDeleteHandler(encryptedStorageService, logger))
+		}
 	}
 
 	backupV1 := r.Group("/api/v1/backups")

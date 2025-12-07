@@ -1,0 +1,192 @@
+package handlers
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/nas-ai/api/src/services"
+	"github.com/sirupsen/logrus"
+)
+
+// VaultStatusRequest is empty, just for documentation
+type VaultSetupRequest struct {
+	MasterPassword string `json:"masterPassword" binding:"required,min=8"`
+}
+
+type VaultUnlockRequest struct {
+	MasterPassword string `json:"masterPassword" binding:"required"`
+}
+
+type VaultConfigRequest struct {
+	VaultPath string `json:"vaultPath" binding:"required"`
+}
+
+// VaultStatusHandler returns the current vault status
+// @Summary Get vault status
+// @Description Returns whether the vault is locked, configured, and the vault path
+// @Tags vault
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vault/status [get]
+func VaultStatusHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, encSvc.GetStatus())
+	}
+}
+
+// VaultSetupHandler initializes the vault with a master password
+// @Summary Setup vault
+// @Description Initialize the vault with a master password (first-time setup only)
+// @Tags vault
+// @Accept json
+// @Produce json
+// @Param request body VaultSetupRequest true "Setup request"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Router /api/v1/vault/setup [post]
+func VaultSetupHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req VaultSetupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload: masterPassword required (min 8 characters)"})
+			return
+		}
+
+		if err := encSvc.Setup(req.MasterPassword); err != nil {
+			if err == services.ErrVaultAlreadySetup {
+				c.JSON(http.StatusConflict, gin.H{"error": "vault is already configured"})
+				return
+			}
+			logger.WithError(err).Error("vault setup failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to setup vault"})
+			return
+		}
+
+		logger.Info("vault setup completed successfully")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "vault setup completed",
+			"status":  encSvc.GetStatus(),
+		})
+	}
+}
+
+// VaultUnlockHandler unlocks the vault with the master password
+// @Summary Unlock vault
+// @Description Unlock the vault using the master password
+// @Tags vault
+// @Accept json
+// @Produce json
+// @Param request body VaultUnlockRequest true "Unlock request"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 423 {object} map[string]string
+// @Router /api/v1/vault/unlock [post]
+func VaultUnlockHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req VaultUnlockRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload: masterPassword required"})
+			return
+		}
+
+		if err := encSvc.Unlock(req.MasterPassword); err != nil {
+			switch err {
+			case services.ErrVaultNotSetup:
+				c.JSON(http.StatusPreconditionFailed, gin.H{"error": "vault is not configured"})
+			case services.ErrAlreadyUnlocked:
+				c.JSON(http.StatusOK, gin.H{"message": "vault is already unlocked", "status": encSvc.GetStatus()})
+			case services.ErrInvalidPassword:
+				logger.Warn("vault unlock: invalid password attempt")
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid master password"})
+			default:
+				logger.WithError(err).Error("vault unlock failed")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unlock vault"})
+			}
+			return
+		}
+
+		logger.Info("vault unlocked successfully")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "vault unlocked",
+			"status":  encSvc.GetStatus(),
+		})
+	}
+}
+
+// VaultLockHandler locks the vault
+// @Summary Lock vault
+// @Description Lock the vault and wipe encryption keys from memory
+// @Tags vault
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 423 {object} map[string]string
+// @Router /api/v1/vault/lock [post]
+func VaultLockHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := encSvc.Lock(); err != nil {
+			if err == services.ErrAlreadyLocked {
+				c.JSON(http.StatusOK, gin.H{"message": "vault is already locked", "status": encSvc.GetStatus()})
+				return
+			}
+			logger.WithError(err).Error("vault lock failed")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to lock vault"})
+			return
+		}
+
+		logger.Info("vault locked successfully")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "vault locked",
+			"status":  encSvc.GetStatus(),
+		})
+	}
+}
+
+// VaultConfigGetHandler returns the current vault configuration
+// @Summary Get vault config
+// @Description Returns the vault path configuration
+// @Tags vault
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vault/config [get]
+func VaultConfigGetHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"vaultPath":  encSvc.GetVaultPath(),
+			"configured": encSvc.IsConfigured(),
+		})
+	}
+}
+
+// VaultConfigUpdateHandler updates the vault path (only when locked and not configured)
+// @Summary Update vault config
+// @Description Update the vault path (only when vault is locked)
+// @Tags vault
+// @Accept json
+// @Produce json
+// @Param request body VaultConfigRequest true "Config request"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Router /api/v1/vault/config [put]
+func VaultConfigUpdateHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req VaultConfigRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload: vaultPath required"})
+			return
+		}
+
+		if err := encSvc.SetVaultPath(req.VaultPath); err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+
+		logger.WithField("vaultPath", req.VaultPath).Info("vault path updated")
+		c.JSON(http.StatusOK, gin.H{
+			"message":   "vault path updated",
+			"vaultPath": encSvc.GetVaultPath(),
+		})
+	}
+}
