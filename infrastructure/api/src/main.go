@@ -155,6 +155,18 @@ func main() {
 		logger.WithField("path", encryptedStoragePath).Info("Encrypted storage service initialized")
 	}
 
+	// Initialize SecureAIFeeder for encrypted file indexing
+	// This pushes decrypted content to the AI agent without writing plaintext to disk
+	var secureAIFeeder *services.SecureAIFeeder
+	if encryptionService != nil {
+		secureAIFeeder = services.NewSecureAIFeeder(
+			encryptionService,
+			cfg.AIServiceURL,
+			logger,
+		)
+		logger.Info("SecureAIFeeder initialized for encrypted content indexing")
+	}
+
 	aiHTTPClient := &http.Client{Timeout: 8 * time.Second}
 
 	go func() {
@@ -347,7 +359,7 @@ func main() {
 		{
 			encV1.GET("/status", handlers.EncryptedStorageStatusHandler(encryptedStorageService))
 			encV1.GET("/files", handlers.EncryptedStorageListHandler(encryptedStorageService, logger))
-			encV1.POST("/upload", handlers.EncryptedStorageUploadHandler(encryptedStorageService, logger))
+			encV1.POST("/upload", handlers.EncryptedStorageUploadHandler(encryptedStorageService, secureAIFeeder, logger))
 			encV1.GET("/download", handlers.EncryptedStorageDownloadHandler(encryptedStorageService, logger))
 			encV1.GET("/preview", handlers.EncryptedStoragePreviewHandler(encryptedStorageService, logger))
 			encV1.DELETE("/delete", handlers.EncryptedStorageDeleteHandler(encryptedStorageService, logger))

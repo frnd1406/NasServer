@@ -48,7 +48,8 @@ func EncryptedStorageListHandler(encStorage *services.EncryptedStorageService, l
 }
 
 // EncryptedStorageUploadHandler uploads and encrypts a file
-func EncryptedStorageUploadHandler(encStorage *services.EncryptedStorageService, logger *logrus.Logger) gin.HandlerFunc {
+// If aiFeeder is provided, it also triggers AI indexing of the encrypted content
+func EncryptedStorageUploadHandler(encStorage *services.EncryptedStorageService, aiFeeder *services.SecureAIFeeder, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -99,10 +100,32 @@ func EncryptedStorageUploadHandler(encStorage *services.EncryptedStorageService,
 			"path":       result.Path,
 		}).Info("File encrypted and saved successfully")
 
+		// Trigger AI indexing (async, non-blocking)
+		// The encrypted file is decrypted in-memory and pushed to the AI agent
+		aiIndexed := false
+		if aiFeeder != nil {
+			go func() {
+				// result.Path is the encrypted path (e.g., /media/frnd14/DEMO/geheim.pdf.enc)
+				// originalPath is for source citations in AI responses
+				originalPath := result.Path
+				if err := aiFeeder.FeedEncryptedFile(result.Path, originalPath, result.FileID, result.MimeType); err != nil {
+					logger.WithFields(logrus.Fields{
+						"fileID": result.FileID,
+						"path":   result.Path,
+						"error":  err.Error(),
+					}).Warn("encrypted storage: AI indexing failed (non-fatal)")
+				} else {
+					logger.WithField("fileID", result.FileID).Info("encrypted storage: AI indexing complete")
+				}
+			}()
+			aiIndexed = true
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"status":    "ok",
-			"encrypted": true,
-			"path":      result.Path,
+			"status":     "ok",
+			"encrypted":  true,
+			"path":       result.Path,
+			"ai_indexed": aiIndexed,
 		})
 	}
 }
