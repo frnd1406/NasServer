@@ -269,6 +269,10 @@ func main() {
 		v1.GET("/ai/settings", handlers.AISettingsGetHandler(logger))
 		v1.POST("/ai/settings", handlers.AISettingsSaveHandler(logger))
 		v1.POST("/ai/reindex", handlers.AIReindexHandler(cfg.AIServiceURL, aiHTTPClient, logger))
+		v1.POST("/ai/warmup", handlers.AIWarmupHandler(logger))
+
+		// Setup endpoints (first-time wizard)
+		v1.GET("/system/setup-status", handlers.SetupStatusHandler(logger))
 
 		// Vault endpoints (encryption management)
 		v1.GET("/vault/status", handlers.VaultStatusHandler(encryptionService))
@@ -290,6 +294,9 @@ func main() {
 		settingsV1.POST("/vault/unlock", handlers.VaultUnlockHandler(encryptionService, logger))
 		settingsV1.POST("/vault/lock", handlers.VaultLockHandler(encryptionService, logger))
 		settingsV1.PUT("/vault/config", handlers.VaultConfigUpdateHandler(encryptionService, logger))
+
+		// Setup wizard (first-time configuration)
+		settingsV1.POST("/setup", handlers.SetupHandler(logger))
 	}
 
 	storageV1 := r.Group("/api/v1/storage")

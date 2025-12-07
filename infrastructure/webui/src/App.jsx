@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 import Unlock from "./pages/Unlock";
+import Setup from "./pages/Setup";
 import FilePreviewDemo from "./pages/FilePreviewDemo";
 import ErrorFallback from "./components/ErrorFallback";
 import logger from "./utils/logger";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/demo" element={<FilePreviewDemo />} />
           <Route path="/unlock" element={<Unlock />} />
+          <Route path="/setup" element={<Setup />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
