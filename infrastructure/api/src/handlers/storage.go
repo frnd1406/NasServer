@@ -268,7 +268,6 @@ func StorageUploadHandler(storage *services.StorageService, logger *logrus.Logge
 				logger.Warn("Could not seek upload stream for AI indexing")
 			}
 		}
-
 		notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, logger)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

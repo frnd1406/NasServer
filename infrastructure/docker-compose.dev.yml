@@ -83,6 +83,11 @@ services:
     volumes:
       - nas_data:/mnt/data
       - nas_backups:/mnt/backups
+      # SECURITY: Vault ist NICHT persistent (Zero-Knowledge)
+      # Wenn Container neustartet → Vault weg → User muss neu einrichten
+      # Das ist GEWOLLT für maximale Sicherheit!
+      # Optional: Uncomment für Convenience (mit Sicherheitsrisiko)
+      # - nas_vault:/var/lib/nas/vault
     networks:
       - nas-network
       - agent-network
@@ -192,6 +197,8 @@ volumes:
   nas_data:
     driver: local
   nas_backups:
+    driver: local
+  nas_vault:
     driver: local
   ollama_models:
     driver: local

@@ -200,6 +200,11 @@ func (s *StorageService) ValidateFileType(file multipart.File, filename string) 
 	// Detect MIME type from magic numbers (more reliable than extension)
 	detectedType := http.DetectContentType(buffer[:n])
 
+	// Strip charset parameter if present (e.g., "text/plain; charset=utf-8" -> "text/plain")
+	if idx := strings.Index(detectedType, ";"); idx != -1 {
+		detectedType = strings.TrimSpace(detectedType[:idx])
+	}
+
 	// Log detection for debugging
 	s.logger.WithFields(logrus.Fields{
 		"filename":      filename,

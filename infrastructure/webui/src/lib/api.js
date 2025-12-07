@@ -319,6 +319,17 @@ export async function apiRequest(path, options = {}) {
     throw refreshError;
   }
 
+  // GLOBAL VAULT INTERCEPTOR: Handle 423 Locked (Vault is locked)
+  // Redirect to vault unlock page immediately
+  if (firstAttempt.res.status === 423) {
+    if (typeof window !== "undefined" && !window.location.pathname.includes('/vault/unlock')) {
+      window.location.href = "/vault/unlock";
+    }
+    const vaultError = new Error("Vault is locked. Please unlock to access encrypted files.");
+    vaultError.status = 423;
+    throw vaultError;
+  }
+
   const message = extractErrorMessage(firstAttempt.res, firstAttempt.data);
   const error = new Error(message);
   error.status = firstAttempt.res.status;

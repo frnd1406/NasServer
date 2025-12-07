@@ -11,6 +11,7 @@ export default function VaultUnlock() {
     const [masterPassword, setMasterPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [shakeError, setShakeError] = useState(false);
     const [vaultStatus, setVaultStatus] = useState(null);
     const [showSetup, setShowSetup] = useState(false);
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -49,6 +50,7 @@ export default function VaultUnlock() {
 
         setLoading(true);
         setError("");
+        setShakeError(false);
 
         try {
             const { data, error: apiError } = await apiRequest("/api/v1/system/vault/unlock", {
@@ -64,6 +66,9 @@ export default function VaultUnlock() {
             navigate("/dashboard", { replace: true });
         } catch (err) {
             setError(err.message || "Entsperren fehlgeschlagen");
+            setShakeError(true);
+            // Reset shake after animation completes
+            setTimeout(() => setShakeError(false), 600);
         } finally {
             setLoading(false);
         }
@@ -73,15 +78,20 @@ export default function VaultUnlock() {
         e.preventDefault();
         if (!masterPassword || masterPassword !== confirmPassword) {
             setError("Passwörter stimmen nicht überein");
+            setShakeError(true);
+            setTimeout(() => setShakeError(false), 600);
             return;
         }
         if (masterPassword.length < 8) {
             setError("Passwort muss mindestens 8 Zeichen lang sein");
+            setShakeError(true);
+            setTimeout(() => setShakeError(false), 600);
             return;
         }
 
         setLoading(true);
         setError("");
+        setShakeError(false);
 
         try {
             const { data, error: apiError } = await apiRequest("/api/v1/system/vault/setup", {
@@ -97,6 +107,8 @@ export default function VaultUnlock() {
             navigate("/dashboard", { replace: true });
         } catch (err) {
             setError(err.message || "Setup fehlgeschlagen");
+            setShakeError(true);
+            setTimeout(() => setShakeError(false), 600);
         } finally {
             setLoading(false);
         }
@@ -104,6 +116,18 @@ export default function VaultUnlock() {
 
     return (
         <div className="min-h-screen bg-[#0a0a0c] text-slate-200 font-sans flex items-center justify-center p-4 relative overflow-hidden">
+
+            {/* Shake Animation CSS */}
+            <style>{`
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+                    20%, 40%, 60%, 80% { transform: translateX(10px); }
+                }
+                .shake {
+                    animation: shake 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+                }
+            `}</style>
 
             {/* Animated Background Blobs */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
@@ -185,7 +209,7 @@ export default function VaultUnlock() {
                                         required
                                         minLength={showSetup ? 8 : 1}
                                         placeholder="••••••••••••"
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:outline-none transition-all"
+                                        className={`w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:outline-none transition-all ${shakeError ? 'shake' : ''}`}
                                         autoFocus
                                     />
                                 </div>
@@ -208,7 +232,7 @@ export default function VaultUnlock() {
                                             required
                                             minLength={8}
                                             placeholder="••••••••••••"
-                                            className="w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:outline-none transition-all"
+                                            className={`w-full pl-10 pr-4 py-3 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 focus:outline-none transition-all ${shakeError ? 'shake' : ''}`}
                                         />
                                     </div>
                                 </div>
@@ -235,10 +259,23 @@ export default function VaultUnlock() {
                         </form>
 
                         {/* Security Note */}
-                        <div className="mt-6 pt-6 border-t border-white/5">
+                        <div className="mt-6 pt-6 border-t border-white/5 space-y-3">
                             <p className="text-center text-xs text-slate-500">
                                 🔒 Verschlüsselung: AES-256-GCM · Key Derivation: Argon2id
                             </p>
+
+                            {/* Zero-Knowledge Warning */}
+                            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                <p className="text-xs text-amber-400 font-medium mb-1.5">
+                                    ⚡ Zero-Knowledge Encryption
+                                </p>
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                    Vault ist standardmäßig <strong className="text-amber-400">nicht persistent</strong>.
+                                    Bei Server-Neustart müssen Sie neu einrichten.
+                                    Das ist <strong>gewollt</strong> für maximale Sicherheit - niemand kann
+                                    Ihre Daten ohne Master-Passwort entschlüsseln, auch nicht mit physischem Zugriff.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>

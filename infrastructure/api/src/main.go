@@ -131,10 +131,20 @@ func main() {
 	}
 
 	// Initialize encryption service with configurable vault path
-	// Default to /var/lib/nas/vault but can be changed via API
-	vaultPath := "/var/lib/nas/vault"
-	if cfg.Environment != "production" {
-		vaultPath = "/tmp/nas-vault-demo" // Use temp path for development/demo
+	// SECURITY: Zero-Knowledge Encryption!
+	// Default: /tmp/nas-vault-demo (NICHT persistent)
+	//   → Container restart = Vault weg = User muss neu einrichten
+	//   → Maximale Sicherheit: Kein physischer Zugriff auf verschlüsselte Keys
+	// Production: /var/lib/nas/vault (persistent, nur wenn Volume gemountet)
+	//   → Convenience, aber Sicherheitsrisiko bei physischem Zugriff
+	vaultPath := "/tmp/nas-vault-demo" // Default: Non-persistent (Zero-Knowledge)
+	if cfg.Environment == "production" {
+		// In Production: Verwende nur persistent wenn explizit gewünscht
+		// User muss bewusst Volume mounten in docker-compose
+		if _, err := os.Stat("/var/lib/nas/vault"); err == nil {
+			vaultPath = "/var/lib/nas/vault"
+			logger.Warn("⚠️  Vault persistence enabled: Keys survive restarts (security trade-off)")
+		}
 	}
 	encryptionService := services.NewEncryptionService(vaultPath)
 	logger.WithField("vaultPath", vaultPath).Info("Encryption service initialized")
