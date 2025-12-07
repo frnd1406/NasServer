@@ -35,7 +35,7 @@ type AIAgentPayload struct {
 }
 
 // notifyAIAgent sends a fire-and-forget notification to the AI knowledge agent
-func notifyAIAgent(filePath, fileID, mimeType string, logger *logrus.Logger) {
+func notifyAIAgent(filePath, fileID, mimeType string, content string, logger *logrus.Logger) {
 	// Run asynchronously to avoid blocking the upload response
 	go func() {
 		// Check if file is eligible for AI indexing
@@ -47,10 +47,16 @@ func notifyAIAgent(filePath, fileID, mimeType string, logger *logrus.Logger) {
 			return
 		}
 
+		// If content is empty but mime type is text, log a debug message (Legacy Mode / Disk Read)
+		if content == "" {
+			logger.WithField("file_id", fileID).Debug("Indexing triggered without inline content (Legacy Mode)")
+		}
+
 		payload := AIAgentPayload{
 			FilePath: filePath,
 			FileID:   fileID,
 			MimeType: mimeType,
+			Content:  content,
 		}
 
 		payloadBytes, err := json.Marshal(payload)
@@ -246,7 +252,24 @@ func StorageUploadHandler(storage *services.StorageService, logger *logrus.Logge
 
 		// Trigger AI agent notification (fire & forget)
 		// This happens AFTER successful save to disk
-		notifyAIAgent(result.Path, result.FileID, result.MimeType, logger)
+
+		// Extract content for AI indexing (RAM-Push)
+		var extractedText string
+		if aiIndexableMimeTypes[result.MimeType] {
+			// Rewind source stream to beginning
+			if _, err := src.Seek(0, 0); err == nil {
+				// Limit content extraction to 2MB to avoid OOM
+				const MaxIndexSize = 2 * 1024 * 1024
+
+				buf := new(bytes.Buffer)
+				io.CopyN(buf, src, MaxIndexSize)
+				extractedText = buf.String()
+			} else {
+				logger.Warn("Could not seek upload stream for AI indexing")
+			}
+		}
+
+		notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, logger)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
