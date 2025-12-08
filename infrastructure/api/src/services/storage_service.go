@@ -293,6 +293,7 @@ type SaveResult struct {
 }
 
 // Save stores the provided file into the given relative directory.
+// If the file already exists, automatic versioning creates backup copies (.v1.bak, .v2.bak, .v3.bak)
 func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multipart.FileHeader) (*SaveResult, error) {
 	filename := fileHeader.Filename
 
@@ -339,6 +340,11 @@ func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multi
 		return nil, err
 	}
 
+	// FILE VERSIONING: If file exists, rotate versions before overwriting
+	if _, err := os.Stat(destPath); err == nil {
+		s.rotateVersions(destPath, 3) // Keep max 3 backup versions
+	}
+
 	dest, err := os.Create(destPath)
 	if err != nil {
 		return nil, err
@@ -362,6 +368,49 @@ func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multi
 	}
 
 	return result, nil
+}
+
+// rotateVersions implements "Time Machine Light" - keeps last N versions of a file
+// Before overwriting a file, this function:
+// 1. Deletes oldest version if > maxVersions exist
+// 2. Renames existing versions: .v2.bak -> .v3.bak, .v1.bak -> .v2.bak
+// 3. Renames current file to .v1.bak
+func (s *StorageService) rotateVersions(filePath string, maxVersions int) {
+	// Delete oldest version if it exceeds max
+	oldestPath := fmt.Sprintf("%s.v%d.bak", filePath, maxVersions)
+	if _, err := os.Stat(oldestPath); err == nil {
+		if err := os.Remove(oldestPath); err != nil {
+			s.logger.WithError(err).Warn("Failed to remove oldest version")
+		}
+	}
+
+	// Shift existing versions: v2 -> v3, v1 -> v2
+	for i := maxVersions - 1; i >= 1; i-- {
+		oldPath := fmt.Sprintf("%s.v%d.bak", filePath, i)
+		newPath := fmt.Sprintf("%s.v%d.bak", filePath, i+1)
+		if _, err := os.Stat(oldPath); err == nil {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				s.logger.WithError(err).WithFields(logrus.Fields{
+					"from": oldPath,
+					"to":   newPath,
+				}).Warn("Failed to rotate version")
+			}
+		}
+	}
+
+	// Move current file to .v1.bak
+	v1Path := fmt.Sprintf("%s.v1.bak", filePath)
+	if err := os.Rename(filePath, v1Path); err != nil {
+		s.logger.WithError(err).WithFields(logrus.Fields{
+			"from": filePath,
+			"to":   v1Path,
+		}).Warn("Failed to create backup version")
+	} else {
+		s.logger.WithFields(logrus.Fields{
+			"file":   filepath.Base(filePath),
+			"backup": filepath.Base(v1Path),
+		}).Info("Created backup version before overwrite")
+	}
 }
 
 // Open returns a file handle and metadata for download.
