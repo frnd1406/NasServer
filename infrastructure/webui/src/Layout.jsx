@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearAuth, getAuth, isAuthenticated } from "./utils/auth";
@@ -17,6 +17,7 @@ import {
   Brain
 } from "lucide-react";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { useSwipe } from "./hooks/useSwipe";
 
 // SidebarItem Component for reusable navigation items
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
@@ -54,6 +55,13 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Swipe handlers for sidebar
+  const closeSidebar = useCallback(() => setMobileMenuOpen(false), []);
+  const openSidebar = useCallback(() => setMobileMenuOpen(true), []);
+
+  const sidebarSwipeProps = useSwipe(closeSidebar, null, { threshold: 50 });
+  const edgeSwipeProps = useSwipe(null, openSidebar, { threshold: 30 });
 
   const handleLogout = () => {
     clearAuth();
@@ -120,13 +128,25 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
 
       <div className="relative z-10 flex h-screen overflow-hidden">
 
+        {/* Mobile Overlay/Backdrop */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+            onClick={closeSidebar}
+            {...edgeSwipeProps}
+          />
+        )}
+
         {/* Sidebar (Desktop & Mobile) */}
-        <aside className={`
-          fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0
-          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-          bg-[#0a0a0c]/80 backdrop-blur-2xl border-r border-white/5 flex flex-col
-        `}>
+        <aside
+          className={`
+            fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-300 ease-in-out
+            lg:relative lg:translate-x-0
+            ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+            bg-[#0a0a0c]/95 backdrop-blur-2xl border-r border-white/5 flex flex-col
+          `}
+          {...sidebarSwipeProps}
+        >
           {/* Logo Area */}
           <div className="p-8 pb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
