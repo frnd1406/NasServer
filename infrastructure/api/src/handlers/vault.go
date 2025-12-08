@@ -190,3 +190,33 @@ func VaultConfigUpdateHandler(encSvc *services.EncryptionService, logger *logrus
 		})
 	}
 }
+
+// VaultPanicHandler - EMERGENCY: Destroys all encryption keys immediately
+// This is the "red button" for security emergencies.
+// @Summary Emergency key destruction
+// @Description DANGER: Immediately destroys all encryption keys from memory. Use only in security emergencies.
+// @Tags vault
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/vault/panic [post]
+func VaultPanicHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logger.Warn("PANIC: Emergency key destruction triggered!")
+
+		// 1. Force lock and wipe all keys (multi-pass wipe + GC)
+		_ = encSvc.Lock() // Ignore error - we want to destroy keys regardless
+
+		// 2. Log the security event
+		logger.WithFields(logrus.Fields{
+			"event":  "PANIC_KEY_DESTRUCTION",
+			"status": "KEYS_DESTROYED",
+		}).Warn("All encryption keys have been destroyed")
+
+		// 3. Respond with status
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "SYSTEM_LOCKED",
+			"keys":    "DESTROYED",
+			"message": "Emergency lockdown complete. All keys wiped from memory.",
+		})
+	}
+}

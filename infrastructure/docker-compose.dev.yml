@@ -88,6 +88,8 @@ services:
       # Das ist GEWOLLT für maximale Sicherheit!
       # Optional: Uncomment für Convenience (mit Sicherheitsrisiko)
       # - nas_vault:/var/lib/nas/vault
+    # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
+    mem_swappiness: 0
     networks:
       - nas-network
       - agent-network
@@ -180,6 +182,8 @@ services:
       resources:
         limits:
           memory: 4G
+    # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
+    mem_swappiness: 0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

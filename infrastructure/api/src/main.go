@@ -333,6 +333,7 @@ func main() {
 		settingsV1.POST("/vault/setup", handlers.VaultSetupHandler(encryptionService, logger))
 		settingsV1.POST("/vault/unlock", handlers.VaultUnlockHandler(encryptionService, logger))
 		settingsV1.POST("/vault/lock", handlers.VaultLockHandler(encryptionService, logger))
+		settingsV1.POST("/vault/panic", handlers.VaultPanicHandler(encryptionService, logger)) // EMERGENCY: Destroys all keys
 		settingsV1.PUT("/vault/config", handlers.VaultConfigUpdateHandler(encryptionService, logger))
 
 		// Setup wizard (first-time configuration)

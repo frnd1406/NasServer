@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"golang.org/x/crypto/argon2"
@@ -207,7 +208,8 @@ func (e *EncryptionService) Unlock(masterPassword string) error {
 	return nil
 }
 
-// Lock securely wipes the DEK from memory and locks the vault
+// Lock securely wipes the DEK from memory and locks the vault.
+// Uses multi-pass overwrite to defeat forensic recovery.
 func (e *EncryptionService) Lock() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -216,15 +218,25 @@ func (e *EncryptionService) Lock() error {
 		return ErrAlreadyLocked
 	}
 
-	// Secure wipe DEK
+	// SECURITY: Multi-pass secure wipe (Operation Ironclad)
+	// Pass 1: Set all bits to 1 (0xFF)
+	// Pass 2: Set all bits to 0 (0x00)
+	// This defeats simple forensic recovery techniques
 	if e.dek != nil {
 		for i := range e.dek {
-			e.dek[i] = 0
+			e.dek[i] = 0xFF
+		}
+		for i := range e.dek {
+			e.dek[i] = 0x00
 		}
 		e.dek = nil
 	}
 
 	e.isUnlocked = false
+
+	// SECURITY: Force garbage collection to clear any lingering copies
+	runtime.GC()
+
 	return nil
 }
 
