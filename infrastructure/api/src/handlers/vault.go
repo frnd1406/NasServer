@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"archive/zip"
+	"bytes"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -218,5 +220,61 @@ func VaultPanicHandler(encSvc *services.EncryptionService, logger *logrus.Logger
 			"keys":    "DESTROYED",
 			"message": "Emergency lockdown complete. All keys wiped from memory.",
 		})
+	}
+}
+
+// VaultExportConfigHandler exports vault configuration files for backup
+// @Summary Export vault config
+// @Description Downloads salt.bin and config.json as a ZIP file for backup. ⚠️ Store securely!
+// @Tags vault
+// @Produce application/zip
+// @Success 200 {file} binary "vault_backup.zip"
+// @Failure 412 {object} map[string]string "Vault not configured"
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/vault/export-config [get]
+func VaultExportConfigHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		files, err := encSvc.GetVaultConfigFiles()
+		if err != nil {
+			if err == services.ErrVaultNotSetup {
+				c.JSON(http.StatusPreconditionFailed, gin.H{"error": "vault is not configured"})
+				return
+			}
+			logger.WithError(err).Error("failed to get vault config files")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read vault files"})
+			return
+		}
+
+		// Create ZIP in memory
+		var buf bytes.Buffer
+		zipWriter := zip.NewWriter(&buf)
+
+		for _, file := range files {
+			w, err := zipWriter.Create(file.Filename)
+			if err != nil {
+				logger.WithError(err).Error("failed to create zip entry")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create backup"})
+				return
+			}
+			if _, err := w.Write(file.Content); err != nil {
+				logger.WithError(err).Error("failed to write zip entry")
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to write backup"})
+				return
+			}
+		}
+
+		if err := zipWriter.Close(); err != nil {
+			logger.WithError(err).Error("failed to close zip")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to finalize backup"})
+			return
+		}
+
+		logger.Info("vault config exported for backup")
+
+		// Set headers for file download
+		c.Header("Content-Type", "application/zip")
+		c.Header("Content-Disposition", "attachment; filename=vault_backup.zip")
+		c.Header("X-Vault-Warning", "⚠️ Store this file securely! Without it, your password is useless.")
+		c.Data(http.StatusOK, "application/zip", buf.Bytes())
 	}
 }

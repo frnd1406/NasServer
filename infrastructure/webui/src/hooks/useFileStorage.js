@@ -369,6 +369,32 @@ export function useFileStorage() {
         }
     }, [loadFiles, loadTrash]);
 
+    // Move file or folder to a new location
+    const moveFile = useCallback(async (sourcePath, destinationPath, currentPath) => {
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/storage/move`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    ...authHeaders(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ sourcePath, destinationPath }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `Move failed: HTTP ${res.status}`);
+            }
+
+            await loadFiles(currentPath);
+            return true;
+        } catch (err) {
+            setError(err.message);
+            return false;
+        }
+    }, [loadFiles]);
+
     return {
         // State
         files,
@@ -393,6 +419,7 @@ export function useFileStorage() {
         batchDownload,
         downloadFolderAsZip,
         batchDelete,
+        moveFile,
     };
 }
 

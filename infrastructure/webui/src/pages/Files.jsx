@@ -21,6 +21,7 @@ import { TrashView } from '../components/TrashView';
 import { DragDropOverlay } from '../components/DragDropOverlay';
 import { NewFolderModal } from '../components/NewFolderModal';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { ContextMenu } from '../components/ContextMenu';
 
 export default function Files() {
   // File storage operations hook
@@ -43,6 +44,7 @@ export default function Files() {
     batchDownload,
     downloadFolderAsZip,
     batchDelete,
+    moveFile,
   } = useFileStorage();
 
   // File preview hook
@@ -79,6 +81,9 @@ export default function Files() {
   const [viewMode, setViewMode] = useState('list');
   const [showTrash, setShowTrash] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState({ isOpen: false, position: { x: 0, y: 0 }, item: null });
 
   // File input ref for upload button
   const fileInputRef = useRef(null);
@@ -133,6 +138,33 @@ export default function Files() {
   const handleRestore = useCallback((item) => {
     restoreFile(item, path);
   }, [restoreFile, path]);
+
+  // Context menu handlers
+  const handleContextMenu = useCallback((e, item) => {
+    e.preventDefault();
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      item
+    });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu({ isOpen: false, position: { x: 0, y: 0 }, item: null });
+  }, []);
+
+  // Rename trigger from context menu (needs to pass to child component)
+  const [renameTarget, setRenameTarget] = useState(null);
+  const handleRenameFromContext = useCallback((item) => {
+    setRenameTarget(item);
+  }, []);
+
+  // Handle file move (drag & drop)
+  const handleMoveFile = useCallback(async (sourceItem, targetFolder) => {
+    const sourcePath = joinPath(path, sourceItem.name);
+    const destinationPath = joinPath(path, targetFolder.name, sourceItem.name);
+    return await moveFile(sourcePath, destinationPath, path);
+  }, [path, moveFile]);
 
   const handleCreateFolder = useCallback(async (folderName) => {
     return await createFolder(folderName, path);
@@ -209,6 +241,19 @@ export default function Files() {
         onDownload={handleDownload}
       />
 
+      {/* Context Menu */}
+      <ContextMenu
+        isOpen={contextMenu.isOpen}
+        position={contextMenu.position}
+        item={contextMenu.item}
+        onClose={closeContextMenu}
+        onOpen={handleNavigate}
+        onPreview={handlePreview}
+        onRename={handleRenameFromContext}
+        onDownload={handleDownload}
+        onDelete={handleDelete}
+      />
+
       {/* Main Content */}
       {showTrash ? (
         <TrashView
@@ -264,8 +309,8 @@ export default function Files() {
               <button
                 onClick={handleToggleSelectAll}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm ${allSelected
-                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                    : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
+                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
                   }`}
               >
                 {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
@@ -323,6 +368,10 @@ export default function Files() {
                   selectedItems={selectedItems}
                   onToggleSelect={toggleSelect}
                   isSelected={isSelected}
+                  onContextMenu={handleContextMenu}
+                  renameTarget={renameTarget}
+                  onRenameComplete={() => setRenameTarget(null)}
+                  onMoveFile={handleMoveFile}
                 />
               ) : (
                 <FileListView
@@ -335,6 +384,10 @@ export default function Files() {
                   selectedItems={selectedItems}
                   onToggleSelect={toggleSelect}
                   isSelected={isSelected}
+                  onContextMenu={handleContextMenu}
+                  renameTarget={renameTarget}
+                  onRenameComplete={() => setRenameTarget(null)}
+                  onMoveFile={handleMoveFile}
                 />
               )}
             </div>

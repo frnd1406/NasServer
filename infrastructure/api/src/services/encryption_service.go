@@ -331,3 +331,40 @@ func (e *EncryptionService) GetStatus() map[string]interface{} {
 		"vaultPath":  e.vaultPath,
 	}
 }
+
+// VaultBackupFile represents a file for backup export
+type VaultBackupFile struct {
+	Filename string
+	Content  []byte
+}
+
+// GetVaultConfigFiles returns salt.bin and config.json for backup export.
+// SECURITY: Does NOT include encrypted_dek.bin - user must remember their password!
+func (e *EncryptionService) GetVaultConfigFiles() ([]VaultBackupFile, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if !e.IsConfiguredUnsafe() {
+		return nil, ErrVaultNotSetup
+	}
+
+	files := make([]VaultBackupFile, 0, 2)
+
+	// Read salt.bin (required for password derivation)
+	saltPath := filepath.Join(e.vaultPath, "salt.bin")
+	saltData, err := os.ReadFile(saltPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read salt.bin: %w", err)
+	}
+	files = append(files, VaultBackupFile{Filename: "salt.bin", Content: saltData})
+
+	// Read config.json (vault metadata)
+	configPath := filepath.Join(e.vaultPath, "config.json")
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config.json: %w", err)
+	}
+	files = append(files, VaultBackupFile{Filename: "config.json", Content: configData})
+
+	return files, nil
+}

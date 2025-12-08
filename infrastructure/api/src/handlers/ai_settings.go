@@ -109,10 +109,16 @@ type AISettingsResponse struct {
 }
 
 // AISettingsGetHandler returns current AI settings
-// For now returns defaults - can be extended to read from config/database
+// Reads from setup.json if available, otherwise returns defaults
 func AISettingsGetHandler(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Default settings
+		// Try to load from setup.json first
+		config, err := loadSetupConfig()
+		if err != nil {
+			logger.WithError(err).Warn("Failed to load setup config for AI settings")
+		}
+
+		// Build response with defaults, override from config if available
 		settings := AISettingsResponse{
 			LLMModel:         "llama3.2",
 			ClassifierModel:  "llama3.2:1b",
@@ -124,12 +130,22 @@ func AISettingsGetHandler(logger *logrus.Logger) gin.HandlerFunc {
 			OllamaURL:        "http://host.docker.internal:11434",
 		}
 
+		// Override with values from setup.json if available
+		if config != nil {
+			if config.AIModels.LLM != "" {
+				settings.LLMModel = config.AIModels.LLM
+			}
+			if config.AIModels.Embedding != "" {
+				settings.EmbeddingModel = config.AIModels.Embedding
+			}
+		}
+
 		c.JSON(http.StatusOK, settings)
 	}
 }
 
 // AISettingsSaveHandler saves AI settings
-// For now just acknowledges - can be extended to persist to config/database
+// Persists AI model settings to setup.json
 func AISettingsSaveHandler(logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
@@ -140,18 +156,43 @@ func AISettingsSaveHandler(logger *logrus.Logger) gin.HandlerFunc {
 			return
 		}
 
-		logger.WithFields(logrus.Fields{
-			"request_id":    requestID,
-			"llm_model":     settings.LLMModel,
-			"classifier":    settings.ClassifierModel,
-			"temperature":   settings.Temperature,
-		}).Info("AI settings updated")
+		// Load existing config
+		config, err := loadSetupConfig()
+		if err != nil {
+			logger.WithError(err).Warn("Failed to load setup config")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load config"})
+			return
+		}
 
-		// TODO: Persist settings to database/config file
+		// If no config exists yet, create a new one
+		if config == nil {
+			config = &SetupConfig{
+				Version:       "2.1",
+				SetupComplete: true,
+				StoragePath:   "/mnt/data",
+			}
+		}
+
+		// Update AI model settings
+		config.AIModels.LLM = settings.LLMModel
+		config.AIModels.Embedding = settings.EmbeddingModel
+
+		// Persist to disk
+		if err := saveSetupConfig(config); err != nil {
+			logger.WithError(err).Error("Failed to save AI settings to config")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
+			return
+		}
+
+		logger.WithFields(logrus.Fields{
+			"request_id":      requestID,
+			"llm_model":       settings.LLMModel,
+			"embedding_model": settings.EmbeddingModel,
+		}).Info("AI settings persisted to setup.json")
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
-			"message": "Settings saved",
+			"message": "Settings saved to setup.json",
 		})
 	}
 }

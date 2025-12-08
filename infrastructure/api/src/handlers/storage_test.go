@@ -47,7 +47,8 @@ func TestStorageDownload_PathTraversalForbidden(t *testing.T) {
 	c.Request = req
 	c.Set("request_id", "test")
 
-	StorageDownloadHandler(svc, logger)(c)
+	// Pass nil for honeyfileService in tests
+	StorageDownloadHandler(svc, nil, logger)(c)
 
 	require.Equal(t, http.StatusForbidden, w.Code)
 }
@@ -66,7 +67,8 @@ func TestStorageDownload_FileOK(t *testing.T) {
 	c.Request = req
 	c.Set("request_id", "test")
 
-	StorageDownloadHandler(svc, logger)(c)
+	// Pass nil for honeyfileService in tests
+	StorageDownloadHandler(svc, nil, logger)(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "attachment; filename=\"hello.txt\"", w.Header().Get("Content-Disposition"))

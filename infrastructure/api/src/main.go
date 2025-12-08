@@ -112,6 +112,10 @@ func main() {
 	systemAlertsRepo := repository.NewSystemAlertsRepository(dbx, logger)
 	monitoringRepo := repository.NewMonitoringRepository(db, logger)
 	embeddingsRepo := repository.NewFileEmbeddingsRepository(dbx, logger)
+	honeyfileRepo := repository.NewHoneyfileRepository(dbx, logger)
+	if err := honeyfileRepo.EnsureTable(context.Background()); err != nil {
+		logger.WithError(err).Fatal("Failed to ensure honeyfiles table")
+	}
 
 	// Initialize services
 	jwtService, err := services.NewJWTService(cfg, logger)
@@ -178,6 +182,10 @@ func main() {
 	}
 
 	aiHTTPClient := &http.Client{Timeout: 8 * time.Second}
+
+	// Initialize HoneyfileService for intrusion detection
+	honeyfileService := services.NewHoneyfileService(honeyfileRepo, encryptionService, logger)
+	logger.Info("HoneyfileService initialized for intrusion detection")
 
 	go func() {
 		if err := scheduler.StartBackupScheduler(backupService, cfg); err != nil {
@@ -311,6 +319,14 @@ func main() {
 		v1.POST("/ai/reindex", handlers.AIReindexHandler(cfg.AIServiceURL, aiHTTPClient, logger))
 		v1.POST("/ai/warmup", handlers.AIWarmupHandler(logger))
 
+		// Network Settings endpoints
+		v1.GET("/network/settings", handlers.NetworkSettingsGetHandler(logger))
+		v1.PUT("/network/settings", handlers.NetworkSettingsSaveHandler(logger))
+
+		// Backup Settings endpoints
+		v1.GET("/backup/settings", handlers.BackupSettingsGetHandler(logger))
+		v1.PUT("/backup/settings", handlers.BackupSettingsSaveHandler(logger))
+
 		// Setup endpoints (first-time wizard)
 		v1.GET("/system/setup-status", handlers.SetupStatusHandler(logger))
 
@@ -335,6 +351,7 @@ func main() {
 		settingsV1.POST("/vault/lock", handlers.VaultLockHandler(encryptionService, logger))
 		settingsV1.POST("/vault/panic", handlers.VaultPanicHandler(encryptionService, logger)) // EMERGENCY: Destroys all keys
 		settingsV1.PUT("/vault/config", handlers.VaultConfigUpdateHandler(encryptionService, logger))
+		settingsV1.GET("/vault/export-config", handlers.VaultExportConfigHandler(encryptionService, logger)) // Backup download
 
 		// Setup wizard (first-time configuration)
 		settingsV1.POST("/setup", handlers.SetupHandler(logger))
@@ -347,8 +364,8 @@ func main() {
 	)
 	{
 		storageV1.GET("/files", handlers.StorageListHandler(storageService, logger))
-		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, logger))
-		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, logger))
+		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, honeyfileService, logger))
+		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, honeyfileService, logger))
 		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
 		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
 		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, logger))
@@ -356,7 +373,9 @@ func main() {
 		storageV1.POST("/trash/restore/:id", handlers.StorageTrashRestoreHandler(storageService, logger))
 		storageV1.DELETE("/trash/:id", handlers.StorageTrashDeleteHandler(storageService, logger))
 		storageV1.POST("/rename", handlers.StorageRenameHandler(storageService, logger))
+		storageV1.POST("/move", handlers.StorageMoveHandler(storageService, logger))
 		storageV1.POST("/mkdir", handlers.StorageMkdirHandler(storageService, logger))
+		storageV1.POST("/upload-zip", handlers.StorageUploadZipHandler(storageService, logger))
 	}
 
 	// Encrypted Storage API (separate from regular storage)
@@ -422,6 +441,18 @@ func main() {
 
 		// Audit logs
 		adminV1.GET("/audit-logs", handlers.AuditLogHandler(db, logger))
+	}
+
+	// === SYSTEM INTEGRITY MONITORING (Stealth - No Swagger exposure) ===
+	sysV1 := r.Group("/api/v1/sys")
+	sysV1.Use(
+		middleware.AuthMiddleware(jwtService, redis, logger),
+		middleware.CSRFMiddleware(redis, logger),
+		middleware.AdminOnly(userRepo, logger),
+	)
+	{
+		// Stealth endpoint - not documented in Swagger
+		sysV1.POST("/integrity/checkpoints", handlers.CreateCheckpointHandler(honeyfileService, logger))
 	}
 
 	// Create HTTP server

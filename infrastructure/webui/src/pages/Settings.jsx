@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
     User,
     Mail,
@@ -41,6 +41,13 @@ import { useTheme } from "../components/ThemeToggle";
 import { useToast } from "../components/Toast";
 import { apiRequest } from "../lib/api";
 import { getAuth } from "../utils/auth";
+
+// Lazy load new settings tabs
+const StorageTab = lazy(() => import("../components/settings/StorageTab"));
+const BackupTab = lazy(() => import("../components/settings/BackupTab"));
+const LogsTab = lazy(() => import("../components/settings/LogsTab"));
+const SecurityTab = lazy(() => import("../components/settings/SecurityTab"));
+const NetworkTab = lazy(() => import("../components/settings/NetworkTab"));
 
 // Glass Card Component
 const GlassCard = ({ children, className = "" }) => (
@@ -170,8 +177,13 @@ export default function Settings() {
         { id: "profile", label: "Profil", icon: User },
         { id: "crypto", label: "Crypto / Files", icon: KeyRound },
         { id: "ai", label: "AI", icon: Brain },
+        { id: "security", label: "Security", icon: Shield },
+        { id: "backup", label: "Backup", icon: FolderSync },
+        { id: "network", label: "Netzwerk", icon: Globe },
+        { id: "storage", label: "Speicher", icon: HardDrive },
+        { id: "logs", label: "Logs", icon: FileText },
         { id: "appearance", label: "Erscheinung", icon: Palette },
-        { id: "admin", label: "Admin", icon: Shield, adminOnly: true },
+        { id: "admin", label: "Admin", icon: Users, adminOnly: true },
         { id: "about", label: "Über", icon: Info }
     ];
 
@@ -382,6 +394,41 @@ export default function Settings() {
                                 </SettingsRow>
                             </div>
                         </GlassCard>
+                    )}
+
+                    {/* Security Tab */}
+                    {activeTab === "security" && (
+                        <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 size={48} className="text-rose-400 animate-spin" /></div>}>
+                            <SecurityTab />
+                        </Suspense>
+                    )}
+
+                    {/* Backup Tab */}
+                    {activeTab === "backup" && (
+                        <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 size={48} className="text-emerald-400 animate-spin" /></div>}>
+                            <BackupTab />
+                        </Suspense>
+                    )}
+
+                    {/* Network Tab */}
+                    {activeTab === "network" && (
+                        <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 size={48} className="text-cyan-400 animate-spin" /></div>}>
+                            <NetworkTab />
+                        </Suspense>
+                    )}
+
+                    {/* Storage Tab */}
+                    {activeTab === "storage" && (
+                        <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 size={48} className="text-blue-400 animate-spin" /></div>}>
+                            <StorageTab />
+                        </Suspense>
+                    )}
+
+                    {/* Logs Tab */}
+                    {activeTab === "logs" && (
+                        <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 size={48} className="text-violet-400 animate-spin" /></div>}>
+                            <LogsTab />
+                        </Suspense>
                     )}
 
                     {/* Admin Section */}
@@ -1236,8 +1283,8 @@ function CryptoSettingsTab() {
                             onClick={vaultStatus?.locked ? null : handleLock}
                             disabled={vaultStatus?.locked}
                             className={`px-4 py-2 rounded-xl font-medium transition-all ${vaultStatus?.locked
-                                    ? "bg-slate-500/20 text-slate-400 cursor-not-allowed"
-                                    : "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                                ? "bg-slate-500/20 text-slate-400 cursor-not-allowed"
+                                : "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
                                 }`}
                         >
                             {vaultStatus?.locked ? "Gesperrt" : "Sperren"}

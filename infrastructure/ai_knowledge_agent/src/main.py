@@ -30,6 +30,10 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mxbai-embed-large")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2")
 EMBEDDING_DIM = 1024  # mxbai-embed-large dimension
 
+# SECURITY: Auto-indexing disabled by default for Zero-Trust
+# Only push-based ingestion via /process endpoint is allowed
+AUTO_INDEX_ENABLED = os.getenv("AUTO_INDEX_ENABLED", "false").lower() == "true"
+
 model_loaded = False
 db_pool = None
 
@@ -275,14 +279,16 @@ def background_health_check():
             logger.warning("Background health check failed: %s", e)
             model_loaded = False
         
-        # Auto-index new files
-        if model_loaded and db_pool:
+        # Auto-index new files (DISABLED for Zero-Trust Security)
+        # Only explicit push via /process endpoint should ingest data
+        if AUTO_INDEX_ENABLED and model_loaded and db_pool:
             try:
                 new_files = index_all_files()
                 if new_files > 0:
                     logger.info("🆕 Auto-indexed %d new files", new_files)
             except Exception as e:
                 logger.warning("Background auto-index failed: %s", e)
+        # else: Auto-index disabled - secure push-only mode
 
 
 def start_background_health_check():
@@ -965,7 +971,12 @@ def delete_embeddings():
 def main():
     prewarm_models()
     init_db_pool()
-    index_all_files()
+    # SECURITY: Auto-index disabled for Zero-Trust (push-only via /process)
+    if AUTO_INDEX_ENABLED:
+        logger.info("⚠️ Auto-indexing enabled by env var - not recommended for production")
+        index_all_files()
+    else:
+        logger.info("🔒 Auto-indexing disabled (Zero-Trust mode) - use /process endpoint")
     start_background_health_check()
     app.run(host="0.0.0.0", port=5000, debug=False)
 
@@ -973,7 +984,12 @@ def main():
 # === GUNICORN COMPATIBILITY ===
 prewarm_models()
 init_db_pool()
-index_all_files()
+# SECURITY: Auto-index disabled for Zero-Trust (push-only via /process)
+if AUTO_INDEX_ENABLED:
+    logger.info("⚠️ Auto-indexing enabled by env var - not recommended for production")
+    index_all_files()
+else:
+    logger.info("🔒 Auto-indexing disabled (Zero-Trust mode) - use /process endpoint")
 start_background_health_check()
 
 

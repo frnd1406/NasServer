@@ -13,17 +13,33 @@ import (
 
 // SetupConfig represents the initial system configuration
 type SetupConfig struct {
-	Version           string    `json:"version"`
-	SetupComplete     bool      `json:"setupComplete"`
-	StoragePath       string    `json:"storagePath"`
-	EncryptionEnabled bool      `json:"encryptionEnabled"`
-	AIModels          AIModels  `json:"aiModels"`
-	CreatedAt         time.Time `json:"createdAt"`
+	Version           string          `json:"version"`
+	SetupComplete     bool            `json:"setupComplete"`
+	StoragePath       string          `json:"storagePath"`
+	EncryptionEnabled bool            `json:"encryptionEnabled"`
+	AIModels          AIModels        `json:"aiModels"`
+	NetworkSettings   NetworkSettings `json:"networkSettings,omitempty"`
+	BackupSettings    BackupSettings  `json:"backupSettings,omitempty"`
+	CreatedAt         time.Time       `json:"createdAt"`
 }
 
 type AIModels struct {
 	LLM       string `json:"llm"`
 	Embedding string `json:"embedding"`
+}
+
+// NetworkSettings holds network-related configuration
+type NetworkSettings struct {
+	RateLimitPerMin    int      `json:"rateLimitPerMin"`
+	SessionTimeoutMins int      `json:"sessionTimeoutMins"`
+	CORSOrigins        []string `json:"corsOrigins"`
+}
+
+// BackupSettings holds backup-related configuration
+type BackupSettings struct {
+	Schedule    string `json:"schedule"`    // Cron expression
+	Destination string `json:"destination"` // Backup destination path
+	Retention   int    `json:"retention"`   // Days to keep backups
 }
 
 // SetupRequest represents the setup wizard request
@@ -177,8 +193,8 @@ func AIWarmupHandler(logger *logrus.Logger) gin.HandlerFunc {
 		}()
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "warmup_started",
-			"models":  req.Models,
+			"status": "warmup_started",
+			"models": req.Models,
 		})
 	}
 }

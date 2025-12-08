@@ -1,6 +1,6 @@
 // File List View component (table view) with multi-select support
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
@@ -14,9 +14,20 @@ export function FileListView({
     onDelete,
     onToggleSelect,
     isSelected,
+    onContextMenu,
+    renameTarget,
+    onRenameComplete,
 }) {
     const [renamingItem, setRenamingItem] = useState(null);
     const [newName, setNewName] = useState('');
+
+    // Trigger rename from context menu
+    useEffect(() => {
+        if (renameTarget) {
+            startRename(renameTarget);
+            onRenameComplete?.();
+        }
+    }, [renameTarget]);
 
     const startRename = (item) => {
         setRenamingItem(item);
@@ -68,14 +79,15 @@ export function FileListView({
                                 className={`group border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer ${selected ? 'bg-blue-500/10' : ''
                                     }`}
                                 onClick={() => item.isDir && onNavigate(item)}
+                                onContextMenu={(e) => onContextMenu?.(e, item)}
                             >
                                 {/* Checkbox */}
                                 <td className="py-4 px-2" onClick={(e) => e.stopPropagation()}>
                                     <button
                                         onClick={() => onToggleSelect?.(item.name)}
                                         className={`p-1 rounded transition-all ${selected
-                                                ? 'text-blue-400'
-                                                : 'text-slate-500 hover:text-slate-300'
+                                            ? 'text-blue-400'
+                                            : 'text-slate-500 hover:text-slate-300'
                                             }`}
                                     >
                                         {selected ? <CheckSquare size={18} /> : <Square size={18} />}

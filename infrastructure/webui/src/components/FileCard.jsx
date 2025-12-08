@@ -1,6 +1,6 @@
 // File Card component for Grid View with selection support
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
@@ -14,11 +14,24 @@ export function FileCard({
     onDelete,
     onToggleSelect,
     isSelected,
+    onContextMenu,
+    renameTarget,
+    onRenameComplete,
+    onMoveFile,
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
     const [newName, setNewName] = useState('');
+    const [isDragOver, setIsDragOver] = useState(false);
 
     const selected = isSelected?.(item.name) || false;
+
+    // Trigger rename from context menu
+    useEffect(() => {
+        if (renameTarget && renameTarget.name === item.name) {
+            startRename();
+            onRenameComplete?.();
+        }
+    }, [renameTarget]);
 
     const startRename = () => {
         setIsRenaming(true);
@@ -38,13 +51,52 @@ export function FileCard({
         setNewName('');
     };
 
+    // Drag handlers
+    const handleDragStart = (e) => {
+        e.dataTransfer.setData('application/json', JSON.stringify(item));
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e) => {
+        if (!item.isDir) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragOver(false);
+    };
+
+    const handleDrop = async (e) => {
+        if (!item.isDir) return;
+        e.preventDefault();
+        setIsDragOver(false);
+
+        try {
+            const sourceItem = JSON.parse(e.dataTransfer.getData('application/json'));
+            if (sourceItem.name === item.name) return; // Can't drop on itself
+            await onMoveFile?.(sourceItem, item);
+        } catch (err) {
+            console.error('Drop failed:', err);
+        }
+    };
+
     return (
         <div
             className={`group relative overflow-hidden rounded-xl border transition-all cursor-pointer ${selected
-                    ? 'border-blue-500/50 bg-blue-500/10'
+                ? 'border-blue-500/50 bg-blue-500/10'
+                : isDragOver
+                    ? 'border-emerald-500/50 bg-emerald-500/10'
                     : 'border-white/10 bg-slate-900/40 hover:bg-white/5'
                 }`}
             onClick={() => item.isDir && onNavigate(item)}
+            onContextMenu={(e) => onContextMenu?.(e, item)}
+            draggable={!isRenaming}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
         >
             {/* Selection Checkbox */}
             <div
@@ -54,8 +106,8 @@ export function FileCard({
                 <button
                     onClick={() => onToggleSelect?.(item.name)}
                     className={`p-1 rounded transition-all ${selected
-                            ? 'text-blue-400 bg-blue-500/20'
-                            : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
+                        ? 'text-blue-400 bg-blue-500/20'
+                        : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
                         }`}
                 >
                     {selected ? <CheckSquare size={16} /> : <Square size={16} />}

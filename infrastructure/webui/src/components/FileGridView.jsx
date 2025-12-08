@@ -12,6 +12,10 @@ export function FileGridView({
     onDelete,
     onToggleSelect,
     isSelected,
+    onContextMenu,
+    renameTarget,
+    onRenameComplete,
+    onMoveFile,
 }) {
     if (files.length === 0) {
         return (
@@ -35,6 +39,10 @@ export function FileGridView({
                     onDelete={onDelete}
                     onToggleSelect={onToggleSelect}
                     isSelected={isSelected}
+                    onContextMenu={onContextMenu}
+                    renameTarget={renameTarget}
+                    onRenameComplete={onRenameComplete}
+                    onMoveFile={onMoveFile}
                 />
             ))}
         </div>

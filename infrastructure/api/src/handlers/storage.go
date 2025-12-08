@@ -35,9 +35,15 @@ type AIAgentPayload struct {
 }
 
 // notifyAIAgent sends a fire-and-forget notification to the AI knowledge agent
-func notifyAIAgent(filePath, fileID, mimeType string, content string, logger *logrus.Logger) {
+func notifyAIAgent(filePath, fileID, mimeType string, content string, honeySvc *services.HoneyfileService, logger *logrus.Logger) {
 	// Run asynchronously to avoid blocking the upload response
 	go func() {
+		// SECURITY: Never index monitored resources
+		if honeySvc != nil && honeySvc.IsHoneyfile(filePath) {
+			logger.WithField("file_path", filePath).Info("Skipping AI indexing for monitored resource")
+			return
+		}
+
 		// Check if file is eligible for AI indexing
 		if !aiIndexableMimeTypes[mimeType] {
 			logger.WithFields(logrus.Fields{
@@ -221,7 +227,7 @@ func StorageListHandler(storage *services.StorageService, logger *logrus.Logger)
 	}
 }
 
-func StorageUploadHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadHandler(storage *services.StorageService, honeySvc *services.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -268,18 +274,29 @@ func StorageUploadHandler(storage *services.StorageService, logger *logrus.Logge
 				logger.Warn("Could not seek upload stream for AI indexing")
 			}
 		}
-		notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, logger)
+		notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, honeySvc, logger)
 
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
 }
 
-func StorageDownloadHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDownloadHandler(storage *services.StorageService, honeySvc *services.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
 		if path == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+			return
+		}
+
+		// SECURITY: Check for integrity checkpoint BEFORE serving
+		fullPath := filepath.Join("/mnt/data", path)
+		if honeySvc != nil && honeySvc.CheckAndTrigger(fullPath) {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"path":       path,
+			}).Error("🔒 INTEGRITY VIOLATION - VAULT LOCKED")
+			c.JSON(http.StatusForbidden, gin.H{"error": "file corrupted"})
 			return
 		}
 
@@ -379,6 +396,91 @@ func StorageRenameHandler(storage *services.StorageService, logger *logrus.Logge
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "renamed"})
+	}
+}
+
+// moveRequest represents the request for moving a file or folder
+type moveRequest struct {
+	SourcePath      string `json:"sourcePath" binding:"required"`
+	DestinationPath string `json:"destinationPath" binding:"required"`
+}
+
+// StorageMoveHandler moves a file or folder to a new location
+func StorageMoveHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetString("request_id")
+		var req moveRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+			return
+		}
+
+		// Validate source and destination paths
+		if req.SourcePath == "" || req.DestinationPath == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "source and destination paths are required"})
+			return
+		}
+
+		// Prevent moving to same location
+		if req.SourcePath == req.DestinationPath {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "source and destination are the same"})
+			return
+		}
+
+		// Get full paths
+		sourceFull, err := storage.GetFullPath(req.SourcePath)
+		if err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		destFull, err := storage.GetFullPath(req.DestinationPath)
+		if err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		// Check source exists
+		if _, err := os.Stat(sourceFull); os.IsNotExist(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "source file not found"})
+			return
+		}
+
+		// Check destination parent directory exists
+		destDir := filepath.Dir(destFull)
+		if _, err := os.Stat(destDir); os.IsNotExist(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "destination directory does not exist"})
+			return
+		}
+
+		// Check destination doesn't already exist
+		if _, err := os.Stat(destFull); err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "destination already exists"})
+			return
+		}
+
+		// Perform the move
+		if err := os.Rename(sourceFull, destFull); err != nil {
+			logger.WithError(err).WithFields(logrus.Fields{
+				"request_id": requestID,
+				"source":     req.SourcePath,
+				"dest":       req.DestinationPath,
+			}).Error("Failed to move file")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to move file"})
+			return
+		}
+
+		logger.WithFields(logrus.Fields{
+			"request_id": requestID,
+			"source":     req.SourcePath,
+			"dest":       req.DestinationPath,
+		}).Info("File moved successfully")
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "moved",
+			"source": req.SourcePath,
+			"dest":   req.DestinationPath,
+		})
 	}
 }
 
