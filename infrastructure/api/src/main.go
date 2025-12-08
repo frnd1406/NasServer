@@ -380,6 +380,7 @@ func main() {
 		storageV1.GET("/trash", handlers.StorageTrashListHandler(storageService, logger))
 		storageV1.POST("/trash/restore/:id", handlers.StorageTrashRestoreHandler(storageService, logger))
 		storageV1.DELETE("/trash/:id", handlers.StorageTrashDeleteHandler(storageService, logger))
+		storageV1.POST("/trash/empty", handlers.StorageTrashEmptyHandler(storageService, logger))
 		storageV1.POST("/rename", handlers.StorageRenameHandler(storageService, logger))
 		storageV1.POST("/move", handlers.StorageMoveHandler(storageService, logger))
 		storageV1.POST("/mkdir", handlers.StorageMkdirHandler(storageService, logger))

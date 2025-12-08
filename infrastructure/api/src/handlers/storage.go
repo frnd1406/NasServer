@@ -383,6 +383,43 @@ func StorageTrashDeleteHandler(storage *services.StorageService, logger *logrus.
 	}
 }
 
+// StorageTrashEmptyHandler permanently deletes ALL items from trash
+func StorageTrashEmptyHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := c.GetString("request_id")
+
+		// Get all trash items
+		items, err := storage.ListTrash()
+		if err != nil {
+			handleStorageError(c, err, logger, requestID)
+			return
+		}
+
+		deletedCount := 0
+		for _, item := range items {
+			if err := storage.DeleteFromTrash(item.ID); err != nil {
+				logger.WithFields(logrus.Fields{
+					"request_id": requestID,
+					"item_id":    item.ID,
+					"error":      err.Error(),
+				}).Warn("Failed to delete trash item")
+				continue
+			}
+			deletedCount++
+		}
+
+		logger.WithFields(logrus.Fields{
+			"request_id": requestID,
+			"count":      deletedCount,
+		}).Info("Trash emptied")
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "emptied",
+			"deleted": deletedCount,
+		})
+	}
+}
+
 func StorageRenameHandler(storage *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
