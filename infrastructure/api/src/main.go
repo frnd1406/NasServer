@@ -327,6 +327,14 @@ func main() {
 		v1.GET("/backup/settings", handlers.BackupSettingsGetHandler(logger))
 		v1.PUT("/backup/settings", handlers.BackupSettingsSaveHandler(logger))
 
+		// Security Settings endpoints
+		v1.GET("/security/settings", handlers.SecuritySettingsGetHandler(logger))
+		v1.PUT("/security/settings", handlers.SecuritySettingsSaveHandler(logger))
+
+		// Storage Monitor Settings endpoints
+		v1.GET("/storage/settings", handlers.StorageSettingsGetHandler(logger))
+		v1.PUT("/storage/settings", handlers.StorageSettingsSaveHandler(logger))
+
 		// Setup endpoints (first-time wizard)
 		v1.GET("/system/setup-status", handlers.SetupStatusHandler(logger))
 

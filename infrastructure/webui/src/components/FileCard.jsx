@@ -1,9 +1,10 @@
 // File Card component for Grid View with selection support
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
+import { useLongPress } from '../hooks/useLongPress';
 
 export function FileCard({
     item,
@@ -22,6 +23,20 @@ export function FileCard({
     const [isRenaming, setIsRenaming] = useState(false);
     const [newName, setNewName] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
+
+    // Long-press handler for mobile preview
+    const handleLongPress = useCallback(() => {
+        if (!item.isDir && canPreview(item.name)) {
+            onPreview?.(item);
+        } else {
+            // Open context menu on long-press for folders or non-previewable files
+            onContextMenu?.({ preventDefault: () => { }, clientX: 100, clientY: 100 }, item);
+        }
+    }, [item, onPreview, onContextMenu]);
+
+    const longPressProps = useLongPress(handleLongPress, {
+        delay: 500,
+    });
 
     const selected = isSelected?.(item.name) || false;
 
@@ -88,7 +103,7 @@ export function FileCard({
                 ? 'border-blue-500/50 bg-blue-500/10'
                 : isDragOver
                     ? 'border-emerald-500/50 bg-emerald-500/10'
-                    : 'border-white/10 bg-slate-900/40 hover:bg-white/5'
+                    : 'border-white/10 bg-slate-900/40 dark:bg-slate-900/40 hover:bg-white/5'
                 }`}
             onClick={() => item.isDir && onNavigate(item)}
             onContextMenu={(e) => onContextMenu?.(e, item)}
@@ -97,6 +112,7 @@ export function FileCard({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            {...longPressProps}
         >
             {/* Selection Checkbox */}
             <div

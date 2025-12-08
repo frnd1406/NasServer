@@ -13,14 +13,16 @@ import (
 
 // SetupConfig represents the initial system configuration
 type SetupConfig struct {
-	Version           string          `json:"version"`
-	SetupComplete     bool            `json:"setupComplete"`
-	StoragePath       string          `json:"storagePath"`
-	EncryptionEnabled bool            `json:"encryptionEnabled"`
-	AIModels          AIModels        `json:"aiModels"`
-	NetworkSettings   NetworkSettings `json:"networkSettings,omitempty"`
-	BackupSettings    BackupSettings  `json:"backupSettings,omitempty"`
-	CreatedAt         time.Time       `json:"createdAt"`
+	Version           string           `json:"version"`
+	SetupComplete     bool             `json:"setupComplete"`
+	StoragePath       string           `json:"storagePath"`
+	EncryptionEnabled bool             `json:"encryptionEnabled"`
+	AIModels          AIModels         `json:"aiModels"`
+	NetworkSettings   NetworkSettings  `json:"networkSettings,omitempty"`
+	BackupSettings    BackupSettings   `json:"backupSettings,omitempty"`
+	SecuritySettings  SecuritySettings `json:"securitySettings,omitempty"`
+	StorageMonitor    StorageMonitor   `json:"storageMonitor,omitempty"`
+	CreatedAt         time.Time        `json:"createdAt"`
 }
 
 type AIModels struct {
@@ -40,6 +42,24 @@ type BackupSettings struct {
 	Schedule    string `json:"schedule"`    // Cron expression
 	Destination string `json:"destination"` // Backup destination path
 	Retention   int    `json:"retention"`   // Days to keep backups
+}
+
+// SecuritySettings holds security-related configuration
+type SecuritySettings struct {
+	TwoFactorEnabled   bool     `json:"twoFactorEnabled"`
+	PasswordMinLength  int      `json:"passwordMinLength"`
+	SessionTimeoutMins int      `json:"sessionTimeoutMins"`
+	AllowedIPs         []string `json:"allowedIPs"`
+	BlockedIPs         []string `json:"blockedIPs"`
+	MaxLoginAttempts   int      `json:"maxLoginAttempts"`
+}
+
+// StorageMonitor holds storage monitoring configuration
+type StorageMonitor struct {
+	WarningThreshold  int  `json:"warningThreshold"`  // Percentage to warn at
+	CriticalThreshold int  `json:"criticalThreshold"` // Percentage to alert at
+	AutoCleanup       bool `json:"autoCleanup"`       // Auto-cleanup old files
+	CleanupAgeDays    int  `json:"cleanupAgeDays"`    // Days before cleanup
 }
 
 // SetupRequest represents the setup wizard request
