@@ -15,6 +15,10 @@ import {
   Calendar,
   CheckCircle,
   X,
+  Cloud,
+  CloudOff,
+  Key,
+  LogOut,
 } from "lucide-react";
 
 // Glass Card Component
@@ -50,6 +54,15 @@ export default function Backup() {
   const [pathValidationStatus, setPathValidationStatus] = useState(null); // null, 'valid', 'warning', 'error'
   const [pathValidationMessage, setPathValidationMessage] = useState("");
   const [pathValidating, setPathValidating] = useState(false);
+
+  // iCloud Connect State
+  const [icloudState, setIcloudState] = useState("disconnected"); // disconnected, connecting, pending_2fa, connected, syncing
+  const [icloudAccount, setIcloudAccount] = useState("");
+  const [icloudAppleId, setIcloudAppleId] = useState("");
+  const [icloudPassword, setIcloudPassword] = useState("");
+  const [icloud2faCode, setIcloud2faCode] = useState("");
+  const [icloudError, setIcloudError] = useState("");
+  const [icloudLoading, setIcloudLoading] = useState(false);
 
   const loadBackups = async () => {
     setLoading(true);
@@ -166,7 +179,131 @@ export default function Backup() {
   useEffect(() => {
     loadBackups();
     loadSettings();
+    checkIcloudStatus();
   }, []);
+
+  // ============================================================
+  // iCloud Bridge Functions
+  // ============================================================
+
+  const ICLOUD_BRIDGE_URL = "/icloud-api";
+
+  const checkIcloudStatus = async () => {
+    try {
+      const res = await fetch(`${ICLOUD_BRIDGE_URL}/status`);
+      const data = await res.json();
+      setIcloudState(data.status || "disconnected");
+      setIcloudAccount(data.account || "");
+    } catch (err) {
+      // Bridge nicht erreichbar - wahrscheinlich nicht gestartet
+      setIcloudState("disconnected");
+    }
+  };
+
+  const handleIcloudLogin = async () => {
+    if (!icloudAppleId || !icloudPassword) {
+      setIcloudError("Apple-ID und Passwort erforderlich");
+      return;
+    }
+
+    setIcloudLoading(true);
+    setIcloudError("");
+
+    try {
+      const res = await fetch(`${ICLOUD_BRIDGE_URL}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appleId: icloudAppleId, password: icloudPassword }),
+      });
+
+      const data = await res.json();
+
+      if (data.status === "connected") {
+        setIcloudState("connected");
+        setIcloudAccount(data.account);
+        setIcloudPassword(""); // Passwort nicht speichern
+      } else if (data.status === "pending_2fa") {
+        setIcloudState("pending_2fa");
+        setIcloudAccount(data.account);
+        setIcloudPassword(""); // Passwort nicht speichern
+      } else if (data.error) {
+        setIcloudError(data.error);
+      }
+    } catch (err) {
+      setIcloudError("Verbindung zur iCloud-Bridge fehlgeschlagen");
+    } finally {
+      setIcloudLoading(false);
+    }
+  };
+
+  const handleIcloud2fa = async () => {
+    if (!icloud2faCode || icloud2faCode.length !== 6) {
+      setIcloudError("6-stelliger Code erforderlich");
+      return;
+    }
+
+    setIcloudLoading(true);
+    setIcloudError("");
+
+    try {
+      const res = await fetch(`${ICLOUD_BRIDGE_URL}/2fa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: icloud2faCode }),
+      });
+
+      const data = await res.json();
+
+      if (data.status === "connected") {
+        setIcloudState("connected");
+        setIcloud2faCode("");
+      } else if (data.error) {
+        setIcloudError(data.error);
+      }
+    } catch (err) {
+      setIcloudError("2FA-Verifizierung fehlgeschlagen");
+    } finally {
+      setIcloudLoading(false);
+    }
+  };
+
+  const handleIcloudSync = async () => {
+    setIcloudLoading(true);
+    setIcloudError("");
+
+    try {
+      const res = await fetch(`${ICLOUD_BRIDGE_URL}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "photos" }),
+      });
+
+      const data = await res.json();
+
+      if (data.status === "syncing") {
+        setIcloudState("syncing");
+        // Nach kurzer Zeit Status prüfen
+        setTimeout(checkIcloudStatus, 5000);
+      }
+    } catch (err) {
+      setIcloudError("Sync konnte nicht gestartet werden");
+    } finally {
+      setIcloudLoading(false);
+    }
+  };
+
+  const handleIcloudDisconnect = async () => {
+    if (!window.confirm("iCloud-Verbindung wirklich trennen?")) return;
+
+    try {
+      await fetch(`${ICLOUD_BRIDGE_URL}/disconnect`, { method: "POST" });
+      setIcloudState("disconnected");
+      setIcloudAccount("");
+      setIcloudAppleId("");
+    } catch (err) {
+      setIcloudError("Trennen fehlgeschlagen");
+    }
+  };
 
   const saveSettings = async () => {
     setSettingsSaving(true);
@@ -425,11 +562,10 @@ export default function Backup() {
                           <button
                             key={days}
                             onClick={() => setRetentionDays(days)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                              retentionDays === days
-                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
-                                : 'bg-slate-800/50 text-slate-400 border-white/10 hover:bg-slate-800 hover:text-slate-300'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${retentionDays === days
+                              ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
+                              : 'bg-slate-800/50 text-slate-400 border-white/10 hover:bg-slate-800 hover:text-slate-300'
+                              }`}
                           >
                             {days} Tage
                           </button>
@@ -467,15 +603,14 @@ export default function Backup() {
                           value={backupPath}
                           onChange={(e) => setBackupPath(e.target.value)}
                           placeholder="/mnt/backups"
-                          className={`w-full px-4 py-2.5 pr-10 bg-slate-800/50 border rounded-lg text-white font-mono focus:bg-slate-800 focus:outline-none transition-all ${
-                            pathValidationStatus === 'valid'
-                              ? 'border-emerald-500/50 focus:border-emerald-500/70'
-                              : pathValidationStatus === 'warning'
+                          className={`w-full px-4 py-2.5 pr-10 bg-slate-800/50 border rounded-lg text-white font-mono focus:bg-slate-800 focus:outline-none transition-all ${pathValidationStatus === 'valid'
+                            ? 'border-emerald-500/50 focus:border-emerald-500/70'
+                            : pathValidationStatus === 'warning'
                               ? 'border-amber-500/50 focus:border-amber-500/70'
                               : pathValidationStatus === 'error'
-                              ? 'border-rose-500/50 focus:border-rose-500/70'
-                              : 'border-white/10 focus:border-blue-500/50'
-                          }`}
+                                ? 'border-rose-500/50 focus:border-rose-500/70'
+                                : 'border-white/10 focus:border-blue-500/50'
+                            }`}
                         />
                         {/* Status Indicator */}
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -492,13 +627,12 @@ export default function Backup() {
                       </div>
                       {/* Validation Message */}
                       {pathValidationMessage && (
-                        <div className={`flex items-start gap-2 text-xs p-2 rounded-lg ${
-                          pathValidationStatus === 'valid'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : pathValidationStatus === 'warning'
+                        <div className={`flex items-start gap-2 text-xs p-2 rounded-lg ${pathValidationStatus === 'valid'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : pathValidationStatus === 'warning'
                             ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                             : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        }`}>
+                          }`}>
                           {pathValidationStatus === 'valid' ? (
                             <CheckCircle size={14} className="shrink-0 mt-0.5" />
                           ) : pathValidationStatus === 'warning' ? (
@@ -566,6 +700,7 @@ export default function Backup() {
           </div>
         </div>
       )}
+
 
       {/* Backups List */}
       <GlassCard>

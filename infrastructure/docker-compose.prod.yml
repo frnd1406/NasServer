@@ -192,6 +192,26 @@ services:
         reservations:
           memory: 2g
 
+  icloudpd:
+    image: boredazfcuk/icloudpd:latest
+    container_name: nas-icloudpd
+    env_file:
+      - ./.env.prod
+    environment:
+      - apple_id=${ICLOUD_APPLE_ID}
+      - TZ=Europe/Berlin
+      - synchronisation_interval=86400
+      - download_path=/icloud
+      - folder_structure={:%Y/%m/%d}
+      - photo_size=original
+      - skip_videos=false
+    volumes:
+      - icloud_photos:/icloud
+      - icloud_config:/config
+    networks:
+      - nas-network
+    restart: unless-stopped
+
 volumes:
   postgres_data_prod:
     driver: local
@@ -204,6 +224,10 @@ volumes:
   nas_data:
     driver: local
   nas_backups:
+    driver: local
+  icloud_photos:
+    driver: local
+  icloud_config:
     driver: local
 
 networks:

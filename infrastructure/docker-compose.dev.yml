@@ -9,7 +9,7 @@ services:
     networks:
       - nas-network
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: [ "CMD", "ollama", "list" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -28,7 +28,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nas_user -d nas_db"]
+      test: [ "CMD-SHELL", "pg_isready -U nas_user -d nas_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -44,7 +44,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -69,8 +69,8 @@ services:
       MONITORING_TOKEN: "monitoring-token-dev-123456"
       DATABASE_URL: "postgres://nas_user:nas_dev_password@postgres:5432/nas_db?sslmode=disable"
       REDIS_URL: "redis:6379"
-      CORS_ORIGINS: "http://localhost:5173,http://localhost:4173,http://192.168.x.x:5173,http://192.168.x.x:4173,http://localhost:3001,http://192.168.x.x:3001"
-      FRONTEND_URL: "http://192.168.x.x:5173"
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:4173,http://192.168.x.x:5173,http://192.168.x.x:4173,http://localhost:3001,http://192.168.x.x:3001,https://felix-freund.com,http://felix-freund.com"
+      FRONTEND_URL: "https://felix-freund.com"
       EMAIL_FROM: "nas.ai@example.com"
       RATE_LIMIT_PER_MIN: 100
     depends_on:
@@ -88,7 +88,7 @@ services:
       # Das ist GEWOLLT für maximale Sicherheit!
       # Optional: Uncomment für Convenience (mit Sicherheitsrisiko)
       # - nas_vault:/var/lib/nas/vault
-    # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
+      # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
     mem_swappiness: 0
     networks:
       - nas-network
@@ -185,13 +185,33 @@ services:
     # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
     mem_swappiness: 0
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
     networks:
       - nas-network
+
+  icloudpd:
+    image: boredazfcuk/icloudpd:latest
+    container_name: nas-icloudpd
+    env_file:
+      - ./.env.dev
+    environment:
+      - apple_id=${ICLOUD_APPLE_ID}
+      - TZ=Europe/Berlin
+      - synchronisation_interval=86400
+      - download_path=/icloud
+      - folder_structure={:%Y/%m/%d}
+      - photo_size=original
+      - skip_videos=false
+    volumes:
+      - icloud_photos:/icloud
+      - icloud_config:/config
+    networks:
+      - nas-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
@@ -205,6 +225,10 @@ volumes:
   nas_vault:
     driver: local
   ollama_models:
+    driver: local
+  icloud_photos:
+    driver: local
+  icloud_config:
     driver: local
 
 networks:

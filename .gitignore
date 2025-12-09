@@ -88,3 +88,9 @@ venv/
 .history/
 *.bak
 \n# Trivy installation files\nLICENSE\ncontrib/\ntrivy_*.tar.gz
+
+# iCloud credentials (CRITICAL - never commit!)
+**/icloud_config/
+**/keyring*
+**/.pyicloud/
+**/cookies/
