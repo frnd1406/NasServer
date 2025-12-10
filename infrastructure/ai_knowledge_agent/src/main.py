@@ -968,6 +968,27 @@ def delete_embeddings():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/list_vectors", methods=["GET"])
+def list_vectors():
+    """
+    List all file IDs in the vector database.
+    Used for garbage collection / reconciliation to find orphaned embeddings.
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT file_id FROM file_embeddings")
+                file_ids = [row[0] for row in cur.fetchall()]
+        
+        return jsonify({
+            "file_ids": file_ids,
+            "count": len(file_ids)
+        })
+    
+    except Exception as e:
+        logger.error("List vectors error: %s", str(e), exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 def main():
     prewarm_models()
     init_db_pool()

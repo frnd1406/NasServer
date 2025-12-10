@@ -450,6 +450,9 @@ func main() {
 
 		// Audit logs
 		adminV1.GET("/audit-logs", handlers.AuditLogHandler(db, logger))
+
+		// Knowledge Index Reconciliation (garbage collection for ghost knowledge)
+		adminV1.POST("/system/reconcile-knowledge", handlers.ReconcileKnowledgeHandler(secureAIFeeder, "/mnt/data", logger))
 	}
 
 	// === SYSTEM INTEGRITY MONITORING (Stealth - No Swagger exposure) ===

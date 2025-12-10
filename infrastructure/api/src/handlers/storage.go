@@ -114,61 +114,63 @@ func notifyAIAgent(filePath, fileID, mimeType string, content string, honeySvc *
 	}()
 }
 
-// notifyAIAgentDelete sends a fire-and-forget deletion notification to the AI knowledge agent
-// This prevents "ghost knowledge" by removing embeddings when files are deleted
-func notifyAIAgentDelete(filePath, fileID string, logger *logrus.Logger) {
-	go func() {
-		payload := map[string]string{
+// notifyAIAgentDelete sends a SYNCHRONOUS deletion notification to the AI knowledge agent.
+// This prevents "ghost knowledge" by removing embeddings when files are deleted.
+// Returns error if AI agent is unreachable, but caller should soft-fail (log, don't block user).
+func notifyAIAgentDelete(filePath, fileID string, logger *logrus.Logger) error {
+	payload := map[string]string{
+		"file_path": filePath,
+		"file_id":   fileID,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to marshal AI agent delete payload")
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	// AI agent delete endpoint
+	aiAgentURL := "http://ai-knowledge-agent:5000/delete"
+
+	req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		logger.WithError(err).Warn("Failed to create AI agent delete request")
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"url":       aiAgentURL,
 			"file_path": filePath,
 			"file_id":   fileID,
-		}
+			"error":     err.Error(),
+		}).Warn("Failed to notify AI agent of deletion")
+		return fmt.Errorf("AI agent unreachable: %w", err)
+	}
+	defer resp.Body.Close()
 
-		payloadBytes, err := json.Marshal(payload)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to marshal AI agent delete payload")
-			return
-		}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		logger.WithFields(logrus.Fields{
+			"file_path": filePath,
+			"file_id":   fileID,
+		}).Info("AI agent deletion completed successfully")
+		return nil
+	}
 
-		// AI agent delete endpoint
-		aiAgentURL := "http://ai-knowledge-agent:5000/delete"
-
-		req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
-		if err != nil {
-			logger.WithError(err).Warn("Failed to create AI agent delete request")
-			return
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-
-		client := &http.Client{
-			Timeout: 10 * time.Second,
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"url":       aiAgentURL,
-				"file_path": filePath,
-				"file_id":   fileID,
-				"error":     err.Error(),
-			}).Warn("Failed to notify AI agent of deletion")
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			logger.WithFields(logrus.Fields{
-				"file_path": filePath,
-				"file_id":   fileID,
-			}).Info("AI agent deletion triggered successfully")
-		} else {
-			logger.WithFields(logrus.Fields{
-				"status_code": resp.StatusCode,
-				"file_path":   filePath,
-				"file_id":     fileID,
-			}).Warn("AI agent delete returned non-2xx status")
-		}
-	}()
+	// Non-2xx status - log but treat as soft error
+	logger.WithFields(logrus.Fields{
+		"status_code": resp.StatusCode,
+		"file_path":   filePath,
+		"file_id":     fileID,
+	}).Warn("AI agent delete returned non-2xx status")
+	return fmt.Errorf("AI agent returned status %d", resp.StatusCode)
 }
 
 func handleStorageError(c *gin.Context, err error, logger *logrus.Logger, requestID string) {
@@ -332,8 +334,17 @@ func StorageDeleteHandler(storage *services.StorageService, logger *logrus.Logge
 		}
 
 		// Notify AI agent to delete embeddings (prevents ghost knowledge)
-		// This happens AFTER successful deletion from filesystem
-		notifyAIAgentDelete(fullPath, fileID, logger)
+		// SYNCHRONOUS call - waits for AI agent response before returning 200
+		// Soft-fail: log error but don't block user if AI agent is down
+		if err := notifyAIAgentDelete(fullPath, fileID, logger); err != nil {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"file_path":  fullPath,
+				"file_id":    fileID,
+				"error":      err.Error(),
+			}).Error("SOFT-FAIL: AI agent deletion failed, ghost knowledge may persist")
+			// Continue - don't block user, file is deleted from disk
+		}
 
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 	}

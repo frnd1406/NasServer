@@ -216,3 +216,117 @@ func (f *SecureAIFeeder) FeedContent(
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("AI agent error (status %d): %s", resp.StatusCode, string(body))
 }
+
+// RemoveDocument removes a document from the AI agent's vector index.
+// Used for synchronous deletion when files are removed from storage.
+func (f *SecureAIFeeder) RemoveDocument(fileID string, filePath string) error {
+	payload := map[string]string{
+		"file_id":   fileID,
+		"file_path": filePath,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	url := f.aiAgentURL + "/delete"
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("AI agent unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		f.logger.WithFields(logrus.Fields{
+			"fileID":   fileID,
+			"filePath": filePath,
+		}).Info("SecureAIFeeder: Document removed from index")
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("AI agent error (status %d): %s", resp.StatusCode, string(body))
+}
+
+// ListVectorsResponse is the response from the AI agent's /list_vectors endpoint
+type ListVectorsResponse struct {
+	FileIDs []string `json:"file_ids"`
+	Count   int      `json:"count"`
+}
+
+// ReconcileIndex identifies and removes orphaned embeddings (ghost knowledge).
+// It fetches all file IDs from the vector store and compares them against
+// actual files in storage, deleting any that no longer exist.
+//
+// Parameters:
+//   - existingFileIDs: Set of file IDs that currently exist in storage
+//
+// Returns:
+//   - deleted: Number of orphaned embeddings removed
+//   - err: Error if reconciliation failed
+func (f *SecureAIFeeder) ReconcileIndex(existingFileIDs map[string]bool) (int, error) {
+	f.logger.Info("SecureAIFeeder: Starting index reconciliation (garbage collection)")
+
+	// Step 1: Get all file IDs from vector store
+	url := f.aiAgentURL + "/list_vectors"
+	resp, err := f.httpClient.Get(url)
+	if err != nil {
+		return 0, fmt.Errorf("failed to contact AI agent: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("AI agent error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var vectorResponse ListVectorsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&vectorResponse); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	f.logger.WithField("vectorCount", vectorResponse.Count).Info("SecureAIFeeder: Found vectors in index")
+
+	// Step 2: Find zombies (vectors without corresponding files)
+	var zombies []string
+	for _, fileID := range vectorResponse.FileIDs {
+		if !existingFileIDs[fileID] {
+			zombies = append(zombies, fileID)
+		}
+	}
+
+	if len(zombies) == 0 {
+		f.logger.Info("SecureAIFeeder: No orphaned embeddings found, index is clean")
+		return 0, nil
+	}
+
+	f.logger.WithField("zombieCount", len(zombies)).Warn("SecureAIFeeder: Found orphaned embeddings")
+
+	// Step 3: Delete zombies
+	deleted := 0
+	for _, fileID := range zombies {
+		if err := f.RemoveDocument(fileID, ""); err != nil {
+			f.logger.WithFields(logrus.Fields{
+				"fileID": fileID,
+				"error":  err.Error(),
+			}).Warn("SecureAIFeeder: Failed to delete orphaned embedding")
+			continue
+		}
+		deleted++
+	}
+
+	f.logger.WithFields(logrus.Fields{
+		"deleted": deleted,
+		"total":   len(zombies),
+	}).Info("SecureAIFeeder: Index reconciliation complete")
+
+	return deleted, nil
+}

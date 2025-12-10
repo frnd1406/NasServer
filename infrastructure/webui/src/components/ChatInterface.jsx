@@ -36,11 +36,29 @@ const ChatInterface = () => {
         setInput('');
         setIsLoading(true);
 
+        // Helper function with retry logic for 502/504 errors
+        const fetchWithRetry = async (url, options, retryCount = 0) => {
+            try {
+                return await apiRequest(url, options);
+            } catch (error) {
+                // Auto-retry once on gateway errors (502/504)
+                const status = error.status || error.response?.status;
+                const isGatewayError = status === 502 || status === 504;
+
+                if (isGatewayError && retryCount < 1) {
+                    console.warn(`Gateway error ${status}, retrying in 1s...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return fetchWithRetry(url, options, retryCount + 1);
+                }
+                throw error; // Re-throw for non-retryable errors
+            }
+        };
+
         try {
-            // FIX: Use apiRequest for consistent auth token handling
-            const data = await apiRequest(`/api/v1/ask?q=${encodeURIComponent(userMessage.content)}`, {
-                method: 'GET'
-            });
+            const data = await fetchWithRetry(
+                `/api/v1/ask?q=${encodeURIComponent(userMessage.content)}`,
+                { method: 'GET' }
+            );
 
             const aiMessage = {
                 role: 'assistant',
@@ -95,67 +113,72 @@ const ChatInterface = () => {
 
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                {messages.map((msg, idx) => (
-                    <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                        {/* Avatar */}
-                        <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user'
+                {messages.map((msg, idx) => {
+                    // Ghost Message Filter: Don't render empty bubbles
+                    if (!msg.content && !msg.isLoading && !msg.isError) return null;
+
+                    return (
+                        <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                            {/* Avatar */}
+                            <div className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${msg.role === 'user'
                                 ? 'bg-indigo-500 text-white'
                                 : 'bg-slate-700 text-indigo-400'
-                            }`}>
-                            {msg.role === 'user' ? <User size={18} /> : <Bot size={18} />}
-                        </div>
-
-                        {/* Message Bubble */}
-                        <div className={`flex flex-col max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-tr-none'
-                                    : 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-white/5'
                                 }`}>
-                                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                {msg.role === 'user' ? <User size={18} /> : <Bot size={18} />}
                             </div>
 
-                            {/* Metadata (Sources & Confidence) for AI messages */}
-                            {msg.role === 'assistant' && !msg.isError && (
-                                <div className="mt-2 space-y-2 w-full">
-                                    {/* Confidence Badge */}
-                                    {msg.confidence && (
-                                        <div className="flex items-center gap-2 text-xs text-slate-400">
-                                            <span>Konfidenz:</span>
-                                            <ConfidenceBadge level={msg.confidence} />
-                                        </div>
-                                    )}
-
-                                    {/* Sources List */}
-                                    {msg.sources && msg.sources.length > 0 && (
-                                        <div className="bg-slate-900/50 rounded-lg p-3 border border-white/5 text-sm">
-                                            <div className="flex items-center gap-2 text-slate-400 mb-2 text-xs uppercase tracking-wider font-medium">
-                                                <FileText size={12} />
-                                                Quellen
-                                            </div>
-                                            <div className="space-y-2">
-                                                {msg.sources.map((source, sIdx) => (
-                                                    <div key={sIdx} className="flex items-start gap-2 text-slate-300 bg-white/5 p-2 rounded hover:bg-white/10 transition-colors cursor-pointer group">
-                                                        <div className="mt-0.5 text-indigo-400 group-hover:text-indigo-300">
-                                                            <CheckCircle2 size={14} />
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="truncate font-medium text-xs text-indigo-300">{source.file_id}</p>
-                                                            <p className="text-xs text-slate-500 mt-0.5">Match: {Math.round(source.similarity * 100)}%</p>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
+                            {/* Message Bubble */}
+                            <div className={`flex flex-col max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                <div className={`rounded-2xl px-4 py-3 ${msg.role === 'user'
+                                    ? 'bg-indigo-600 text-white rounded-tr-none'
+                                    : 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-white/5'
+                                    }`}>
+                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                                 </div>
-                            )}
 
-                            <span className="text-[10px] text-slate-500 mt-1 px-1">
-                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                                {/* Metadata (Sources & Confidence) for AI messages */}
+                                {msg.role === 'assistant' && !msg.isError && (
+                                    <div className="mt-2 space-y-2 w-full">
+                                        {/* Confidence Badge */}
+                                        {msg.confidence && (
+                                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                                                <span>Konfidenz:</span>
+                                                <ConfidenceBadge level={msg.confidence} />
+                                            </div>
+                                        )}
+
+                                        {/* Sources List */}
+                                        {msg.sources && msg.sources.length > 0 && (
+                                            <div className="bg-slate-900/50 rounded-lg p-3 border border-white/5 text-sm">
+                                                <div className="flex items-center gap-2 text-slate-400 mb-2 text-xs uppercase tracking-wider font-medium">
+                                                    <FileText size={12} />
+                                                    Quellen
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {msg.sources.map((source, sIdx) => (
+                                                        <div key={sIdx} className="flex items-start gap-2 text-slate-300 bg-white/5 p-2 rounded hover:bg-white/10 transition-colors cursor-pointer group">
+                                                            <div className="mt-0.5 text-indigo-400 group-hover:text-indigo-300">
+                                                                <CheckCircle2 size={14} />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="truncate font-medium text-xs text-indigo-300">{source.file_id}</p>
+                                                                <p className="text-xs text-slate-500 mt-0.5">Match: {Math.round(source.similarity * 100)}%</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <span className="text-[10px] text-slate-500 mt-1 px-1">
+                                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
 
                 {isLoading && (
                     <div className="flex gap-4">

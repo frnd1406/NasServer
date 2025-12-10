@@ -68,5 +68,88 @@ DELETE_RESULT=$(curl -s -X POST "$AI_AGENT_URL/delete" \
 
 echo "Delete Response: $DELETE_RESULT"
 
+# =================================================================
+# Test 4: DESTRUCTIVE PATH TEST (Ghost Knowledge Elimination)
+# This is the critical test from Operation Ghost Busters
+# =================================================================
 echo ""
-echo "=== Test Complete ==="
+echo "=== 🔥 DESTRUCTIVE PATH TEST (Ghost Knowledge) ==="
+echo ""
+
+# Step 4.1: Upload a secret file
+echo "📤 Step 4.1: Ingesting secret.txt with 'Codewort: Bananenbrot'"
+GHOST_INGEST=$(curl -s -X POST "$AI_AGENT_URL/process" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Dieses Dokument enthält ein geheimes Codewort: Bananenbrot. Bitte merke es dir!",
+    "file_id": "secret.txt",
+    "file_path": "/mnt/data/secret.txt",
+    "mime_type": "text/plain"
+  }')
+
+if echo "$GHOST_INGEST" | grep -q '"status": "success"'; then
+  echo "✅ Secret ingested successfully"
+else
+  echo "❌ Secret ingestion failed"
+  echo "Response: $GHOST_INGEST"
+  exit 1
+fi
+
+# Small delay for embedding to be available
+sleep 2
+
+# Step 4.2: Verify the secret is accessible via RAG
+echo ""
+echo "🔍 Step 4.2: Asking 'Was ist das Codewort?'"
+GHOST_RAG1=$(curl -s -X POST "$AI_AGENT_URL/rag" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Was ist das Codewort?", "top_k": 5}')
+
+echo "RAG Response: $GHOST_RAG1"
+if echo "$GHOST_RAG1" | grep -qi "Bananenbrot"; then
+  echo "✅ SECRET FOUND: AI knows the Codewort (Bananenbrot)"
+else
+  echo "❌ SECRET NOT FOUND: Expected 'Bananenbrot' in response"
+  exit 1
+fi
+
+# Step 4.3: Delete the secret file
+echo ""
+echo "🗑️ Step 4.3: Deleting secret.txt from AI index"
+GHOST_DELETE=$(curl -s -X POST "$AI_AGENT_URL/delete" \
+  -H "Content-Type: application/json" \
+  -d '{"file_id": "secret.txt"}')
+
+if echo "$GHOST_DELETE" | grep -q '"status": "success"'; then
+  echo "✅ Secret deleted from index"
+else
+  echo "⚠️ Delete returned unexpected status (may have been already deleted or not found)"
+  echo "Response: $GHOST_DELETE"
+fi
+
+# Small delay for deletion to propagate
+sleep 1
+
+# Step 4.4: CRITICAL - Verify the secret is GONE
+echo ""
+echo "🔍 Step 4.4: CRITICAL - Asking 'Was ist das Codewort?' again"
+GHOST_RAG2=$(curl -s -X POST "$AI_AGENT_URL/rag" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Was ist das Codewort?", "top_k": 5}')
+
+echo "RAG Response: $GHOST_RAG2"
+if echo "$GHOST_RAG2" | grep -qi "Bananenbrot"; then
+  echo "❌ GHOST KNOWLEDGE DETECTED: AI still knows 'Bananenbrot' after deletion!"
+  echo "   This is a CRITICAL FAILURE - ghost knowledge persists!"
+  exit 1
+else
+  echo "✅ GHOST BUSTED: AI no longer knows the secret (Bananenbrot not in response)"
+  echo "   Ghost knowledge successfully eliminated!"
+fi
+
+echo ""
+echo "=== All Tests Complete ==="
+echo "✅ Phase 1: Direct ingestion - PASSED"
+echo "✅ Phase 2: Search - PASSED"
+echo "✅ Phase 3: RAG query - PASSED"
+echo "✅ Phase 4: Ghost knowledge elimination - PASSED"
