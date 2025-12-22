@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/models"
 	"github.com/nas-ai/api/src/repository"
+	"github.com/shirou/gopsutil/v4/cpu"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/mem"
 	"github.com/sirupsen/logrus"
 )
 
@@ -109,6 +114,56 @@ func SystemMetricsListHandler(repo *repository.SystemMetricsRepository, logger *
 
 		c.JSON(http.StatusOK, gin.H{
 			"items": items,
+		})
+	}
+}
+
+// SystemMetricsLiveHandler returns real-time system stats (CPU, RAM, Disk) using gopsutil.
+// Used for the Admin Dashboard "Health Card".
+func SystemMetricsLiveHandler(logger *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		// 1. CPU
+		cpuPercent, err := cpu.Percent(0, false)
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get CPU stats")
+		}
+		cpuVal := 0.0
+		if len(cpuPercent) > 0 {
+			cpuVal = cpuPercent[0]
+		}
+
+		// 2. RAM
+		vm, err := mem.VirtualMemory()
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get RAM stats")
+		}
+		ramVal := 0.0
+		ramTotal := uint64(0)
+		if vm != nil {
+			ramVal = vm.UsedPercent
+			ramTotal = vm.Total
+		}
+
+		// 3. Disk (Root)
+		diskStat, err := disk.Usage("/")
+		if err != nil {
+			logger.WithError(err).Warn("Failed to get Disk stats")
+		}
+		diskVal := 0.0
+		diskTotal := uint64(0)
+		if diskStat != nil {
+			diskVal = diskStat.UsedPercent
+			diskTotal = diskStat.Total
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"cpu_percent":  math.Round(cpuVal*100) / 100,
+			"ram_percent":  math.Round(ramVal*100) / 100,
+			"disk_percent": math.Round(diskVal*100) / 100,
+			"ram_total":    ramTotal,
+			"disk_total":   diskTotal,
+			"timestamp":    time.Now(),
 		})
 	}
 }

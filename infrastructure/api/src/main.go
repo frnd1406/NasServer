@@ -201,6 +201,18 @@ func main() {
 	honeyfileService := services.NewHoneyfileService(honeyfileRepo, encryptionService, logger)
 	logger.Info("HoneyfileService initialized for intrusion detection")
 
+	// Phase 8: Dead Man's Switch (Alerting)
+	alertService := services.NewAlertService(emailService, cfg, logger)
+	// Start background alert ticker (every 5 minutes)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			alertService.RunSystemChecks()
+		}
+	}()
+	logger.Info("AlertService initialized (Dead Man's Switch active)")
+
 	// Initialize BlobStorageHandler for chunked uploads (Zero-Knowledge Phase 4)
 	blobStorageHandler := handlers.NewBlobStorageHandler(storageService, logger)
 	logger.Info("BlobStorageHandler initialized for chunked encrypted uploads")
@@ -321,7 +333,9 @@ func main() {
 	{
 		v1.GET("/auth/csrf", handlers.GetCSRFToken(redis, logger))
 		v1.POST("/system/metrics", handlers.SystemMetricsHandler(systemMetricsRepo, cfg.MonitoringToken, logger))
+
 		v1.GET("/system/metrics", handlers.SystemMetricsListHandler(systemMetricsRepo, logger))
+		v1.GET("/system/metrics/live", handlers.SystemMetricsLiveHandler(logger)) // New Phase 8 Endpoint
 		v1.GET("/system/alerts", handlers.SystemAlertsListHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts", handlers.SystemAlertCreateHandler(systemAlertsRepo, logger))
 		v1.POST("/system/alerts/:id/resolve", handlers.SystemAlertResolveHandler(systemAlertsRepo, logger))

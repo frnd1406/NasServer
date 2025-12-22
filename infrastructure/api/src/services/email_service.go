@@ -124,6 +124,33 @@ func (s *EmailService) SendWelcomeEmail(to, username string) error {
 	return nil
 }
 
+// SendGenericEmail sends a generic email (text/html)
+func (s *EmailService) SendGenericEmail(to, subject, body string) error {
+	params := &resend.SendEmailRequest{
+		From:    s.fromAddress,
+		To:      []string{to},
+		Subject: subject,
+		Html:    body, // Treating body as HTML for flexibility
+		Text:    body, // Fallback
+	}
+
+	sent, err := s.client.Emails.Send(params)
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"to":    to,
+			"error": err.Error(),
+		}).Error("Failed to send generic email")
+		return fmt.Errorf("failed to send generic email: %w", err)
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"to":       to,
+		"email_id": sent.Id,
+	}).Info("Generic email sent successfully")
+
+	return nil
+}
+
 // renderVerificationHTML renders the email verification HTML template
 func (s *EmailService) renderVerificationHTML(username, verifyURL string) string {
 	tmpl := `

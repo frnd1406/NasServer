@@ -6,6 +6,11 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
     healthcheck:
@@ -32,6 +37,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
       - agent-network
@@ -49,6 +59,11 @@ services:
       timeout: 3s
       retries: 5
     command: redis-server --appendonly yes
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
       - agent-network
@@ -68,6 +83,11 @@ services:
       JWT_SECRET: "dev_jwt_secret_32_chars_minimum_please_1234"
       MONITORING_TOKEN: "monitoring-token-dev-123456"
       DATABASE_URL: "postgres://nas_user:nas_dev_password@postgres:5432/nas_db?sslmode=disable"
+      # Explicit DB Env Vars to override defaults
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_USER: "nas_user"
+      DB_PASSWORD: "nas_dev_password"
       REDIS_URL: "redis:6379"
       CORS_ORIGINS: "http://localhost:5173,http://localhost:4173,http://192.168.x.x:5173,http://192.168.x.x:4173,http://localhost:3001,http://192.168.x.x:3001,https://felix-freund.com,http://felix-freund.com"
       FRONTEND_URL: "https://felix-freund.com"
@@ -91,6 +111,11 @@ services:
       # - nas_vault:/var/lib/nas/vault
       # SECURITY: Operation Ironclad - Prevent RAM from leaking to swap
     mem_swappiness: 0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
       - agent-network
@@ -109,6 +134,11 @@ services:
     depends_on:
       api:
         condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
 
@@ -125,6 +155,11 @@ services:
     depends_on:
       api:
         condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
 
@@ -142,6 +177,11 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
 
@@ -153,6 +193,11 @@ services:
     depends_on:
       api:
         condition: service_started
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - agent-network
       - nas-network
@@ -192,6 +237,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
 
@@ -211,6 +261,11 @@ services:
     volumes:
       - icloud_photos:/icloud
       - icloud_config:/config
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - nas-network
     restart: unless-stopped

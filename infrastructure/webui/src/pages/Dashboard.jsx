@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { useSystemHealth } from "../hooks/useSystemHealth";
 import {
-  Activity,
-  HardDrive,
   ShieldCheck,
   ShieldAlert,
   Loader2,
-  Cpu,
-  MemoryStick,
   Clock,
   Archive,
   Server,
+  Cpu,
+  MemoryStick,
+  HardDrive,
 } from "lucide-react";
 import { DashboardSkeleton } from "../components/Skeleton";
+import SystemHealthCard from "../components/SystemHealthCard";
 
 // Glass Card Component
 const GlassCard = ({ children, className = "" }) => (
@@ -260,29 +260,10 @@ export default function Dashboard() {
 
       </div>
 
-      {/* 3. System Health Card (Full Width Below) */}
-      <GlassCard className="hover:bg-emerald-500/5 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30">
-              <Activity size={28} className="text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">System Status</p>
-              <p className="text-3xl font-bold text-emerald-400">Online</p>
-              <p className="text-slate-500 text-sm mt-1">Alle Dienste laufen stabil</p>
-            </div>
-          </div>
-
-          {/* Uptime Indicator */}
-          <div className="text-right">
-            <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Verfügbarkeit</p>
-            <p className="text-2xl font-bold text-white">99.9%</p>
-            <p className="text-slate-500 text-xs mt-1">Letzte 30 Tage</p>
-          </div>
-        </div>
-      </GlassCard>
-
+      {/* 3. Live System Monitor (Phase 8) */}
+      <div className="mt-8">
+        <SystemHealthCard />
+      </div>
     </div>
   );
 }
