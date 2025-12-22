@@ -23,8 +23,8 @@ const (
 	// Prevents zip bombs (e.g., 42.zip where 42KB expands to petabytes)
 	MaxCompressionRatio = 100
 
-	// MaxUnpackedSize - Hard cap on total extracted content (2GB)
-	MaxUnpackedSize = 2 << 30
+	// MaxUnpackedSize - Hard cap on total extracted content (1GB)
+	MaxUnpackedSize = 1 << 30
 
 	// MaxSingleFileSize - Maximum size for a single extracted file (500MB)
 	MaxSingleFileSize = 500 << 20

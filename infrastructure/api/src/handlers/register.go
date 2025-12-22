@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"regexp"
 
@@ -74,7 +75,7 @@ func RegisterHandler(
 
 		// Security Check: Invite Code (Phase 7 Hardening)
 		if cfg.InviteCode != "" {
-			if req.InviteCode != cfg.InviteCode {
+			if subtle.ConstantTimeCompare([]byte(req.InviteCode), []byte(cfg.InviteCode)) != 1 {
 				logger.WithFields(logrus.Fields{
 					"request_id":  requestID,
 					"ip":          c.ClientIP(),

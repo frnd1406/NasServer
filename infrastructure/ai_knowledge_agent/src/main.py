@@ -488,27 +488,26 @@ def get_db_connection():
 # SECURITY: Shared Secret for Internal Communication
 INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET")
 
-def require_internal_auth(f):
-    """Decorator to require X-Internal-Secret header."""
-    def decorated(*args, **kwargs):
-        # Allow health checks without auth (optional, but good for Docker)
-        if request.endpoint == 'health' or request.endpoint == 'status':
-            return f(*args, **kwargs)
+@app.before_request
+def check_internal_auth():
+    """Global middleware to require X-Internal-Secret header."""
+    # Allow health checks without auth (optional, but good for Docker/K8s)
+    if request.endpoint == 'health':
+        return None
+        
+    # Skip auth for static files or OPTIONS if needed (none here)
+    if request.method == 'OPTIONS':
+        return None
+
+    secret = request.headers.get('X-Internal-Secret')
+    if not INTERNAL_API_SECRET:
+            # Fail open or closed? Closed is safer.
+            logger.error("INTERNAL_API_SECRET not set on server! Rejecting all requests.")
+            return jsonify({"error": "Server misconfiguration"}), 500
             
-        secret = request.headers.get('X-Internal-Secret')
-        if not INTERNAL_API_SECRET:
-             # Fail open or closed? Closed is safer.
-             logger.error("INTERNAL_API_SECRET not set on server! Rejecting all requests.")
-             return jsonify({"error": "Server misconfiguration"}), 500
-             
-        if not secret or secret != INTERNAL_API_SECRET:
-            logger.warning("Unauthorized access attempt from %s", request.remote_addr)
-            return jsonify({"error": "Unauthorized"}), 401
-            
-        return f(*args, **kwargs)
-    
-    decorated.__name__ = f.__name__
-    return decorated
+    if not secret or secret != INTERNAL_API_SECRET:
+        logger.warning("Unauthorized access attempt from %s to %s", request.remote_addr, request.path)
+        return jsonify({"error": "Unauthorized"}), 403
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -588,7 +587,6 @@ def status():
 
 
 @app.route("/reindex", methods=["POST"])
-@require_internal_auth
 def reindex():
     """Trigger re-indexing of all files."""
     try:
@@ -609,7 +607,6 @@ def reindex():
 
 
 @app.route("/process", methods=["POST"])
-@require_internal_auth
 def process_file():
     """Process an uploaded file.
     Supports two modes:
@@ -695,7 +692,6 @@ def process_file():
 
 
 @app.route("/embed_query", methods=["POST"])
-@require_internal_auth
 def embed_query():
     """Generate embedding for a search query via Ollama."""
     if not model_loaded:
@@ -721,7 +717,6 @@ def embed_query():
 
 
 @app.route("/search", methods=["POST"])
-@require_internal_auth
 def vector_search():
     """Semantic vector search."""
     if not model_loaded:
@@ -767,7 +762,6 @@ def vector_search():
 
 
 @app.route("/rag", methods=["POST"])
-@require_internal_auth
 def rag_query():
     """
     RAG (Retrieval Augmented Generation) endpoint.
