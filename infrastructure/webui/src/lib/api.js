@@ -25,6 +25,41 @@ function normalizeBaseUrl(url) {
 const API_BASE_URL = normalizeBaseUrl(envBaseUrl);
 const LOGOUT_COUNTDOWN_SECONDS = 4;
 
+// Local Fallback Storage Keys
+const LOCAL_IP_KEY = 'nas_last_known_ip';
+const LAST_SEEN_KEY = 'nas_last_seen';
+
+/**
+ * Extract and store local IPs from API responses for offline fallback.
+ * @param {object} data - API response data
+ */
+function cacheLocalIPFromResponse(data) {
+  if (typeof localStorage === 'undefined') return;
+  if (data?.local_ips && Array.isArray(data.local_ips) && data.local_ips.length > 0) {
+    localStorage.setItem(LOCAL_IP_KEY, data.local_ips[0]);
+    localStorage.setItem(LAST_SEEN_KEY, Date.now().toString());
+  }
+}
+
+/**
+ * Get the cached local IP for fallback.
+ * @returns {string|null}
+ */
+export function getCachedLocalIP() {
+  if (typeof localStorage === 'undefined') return null;
+  return localStorage.getItem(LOCAL_IP_KEY);
+}
+
+/**
+ * Get the timestamp when local IP was last seen.
+ * @returns {number|null}
+ */
+export function getLastSeenTimestamp() {
+  if (typeof localStorage === 'undefined') return null;
+  const ts = localStorage.getItem(LAST_SEEN_KEY);
+  return ts ? parseInt(ts, 10) : null;
+}
+
 function buildUrl(path = "") {
   if (!path.startsWith("/")) {
     return `${API_BASE_URL}/${path}`;
@@ -290,6 +325,8 @@ export async function apiRequest(path, options = {}) {
   const firstAttempt = await performRequest(path, options);
 
   if (firstAttempt.res.ok) {
+    // Cache local IP for offline fallback feature
+    cacheLocalIPFromResponse(firstAttempt.data);
     return firstAttempt.data;
   }
 

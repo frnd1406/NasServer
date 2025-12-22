@@ -72,6 +72,8 @@ services:
       # Ollama LLM for RAG (runs on host)
       OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434}"
       LLM_MODEL: "${LLM_MODEL:-qwen2.5:3b}"
+      # Local Server IP for offline fallback feature
+      LOCAL_SERVER_IP: "${LOCAL_SERVER_IP:-192.168.178.181}"
     secrets:
       - jwt_secret
       - monitoring_token

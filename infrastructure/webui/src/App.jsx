@@ -13,6 +13,7 @@ import Unlock from "./pages/Unlock";
 import Setup from "./pages/Setup";
 import FilePreviewDemo from "./pages/FilePreviewDemo";
 import ErrorFallback from "./components/ErrorFallback";
+import ConnectionFallbackModal from "./components/ConnectionFallbackModal";
 import logger from "./utils/logger";
 import { VaultProvider } from "./context/VaultContext";
 
@@ -30,6 +31,8 @@ export default function App() {
       }}
     >
       <VaultProvider>
+        {/* Global connection fallback modal for offline detection */}
+        <ConnectionFallbackModal />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />

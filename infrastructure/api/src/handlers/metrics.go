@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"math"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -157,6 +159,9 @@ func SystemMetricsLiveHandler(logger *logrus.Logger) gin.HandlerFunc {
 			diskTotal = diskStat.Total
 		}
 
+		// 4. Get Local IPs for fallback
+		localIPs := getLocalIPs()
+
 		c.JSON(http.StatusOK, gin.H{
 			"cpu_percent":  math.Round(cpuVal*100) / 100,
 			"ram_percent":  math.Round(ramVal*100) / 100,
@@ -164,6 +169,49 @@ func SystemMetricsLiveHandler(logger *logrus.Logger) gin.HandlerFunc {
 			"ram_total":    ramTotal,
 			"disk_total":   diskTotal,
 			"timestamp":    time.Now(),
+			"local_ips":    localIPs,
 		})
 	}
+}
+
+// getLocalIPs returns a list of local IPv4 addresses for fallback connectivity.
+// Priority: 1) LOCAL_SERVER_IP environment variable, 2) Non-Docker network IPs
+func getLocalIPs() []string {
+	var ips []string
+
+	// Check for explicit LOCAL_SERVER_IP first (set in docker-compose)
+	if envIP := os.Getenv("LOCAL_SERVER_IP"); envIP != "" {
+		return []string{envIP}
+	}
+
+	// Auto-detect: get all non-loopback IPv4 addresses
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ips
+	}
+
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ipStr := ipnet.IP.String()
+				// Exclude Docker bridge networks (172.16.0.0/12)
+				if !isDockerNetwork(ipStr) {
+					ips = append(ips, ipStr)
+				}
+			}
+		}
+	}
+	return ips
+}
+
+// isDockerNetwork checks if an IP is in the Docker default bridge range (172.16.0.0/12)
+func isDockerNetwork(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	// Docker typically uses 172.16.0.0/12 (172.16.x.x - 172.31.x.x) and 172.17.x.x
+	firstOctet := parsed.To4()[0]
+	secondOctet := parsed.To4()[1]
+	return firstOctet == 172 && secondOctet >= 16 && secondOctet <= 31
 }
