@@ -1,0 +1,181 @@
+# NOTE: For a consolidated manifest (including documentation links and dependencies),
+# see Project/project-manifest.yaml.
+global:
+  nas_domain: nas.example.com
+  api_domain: api.example.com
+  media_domain: media.example.com
+  network_range: 192.168.1.0/24
+  vpn_range: 10.8.0.0/24
+  admin_email: admin@example.com
+  timezone: Europe/Berlin
+agents:
+  SystemSetupAgent:
+    hostname: nas-server
+    users:
+    - nasadmin
+    - nasservice
+    - nasbackup
+    package_approver_unit: systemsetup-package-approver@.service
+    allowlist_review_timer: systemsetup-allowlist-review.timer
+  RAIDConfigAgent:
+    raid_device: /dev/md0
+    filesystem: ext4
+    mountpoint: /srv/nas-data
+  NetworkSecurityAgent:
+    wireguard_port: 51820
+    ssl_provider: letsencrypt
+    vpn_clients:
+    - ios
+    - laptop
+    - tablet
+  BackupAgent:
+    snapshot_root: /srv/snapshots
+    usb_mountpoint: /mnt/backup-usb
+    cloud_remote: b2://nas-backups
+  ServiceAgent:
+    smb_shares:
+    - NAS-Data
+    - Public
+    - TimeMachine
+    nfs_exports:
+    - /srv/nas-data
+    - /srv/media
+  MonitoringAgent:
+    prometheus_url: http://localhost:9090
+    grafana_url: http://localhost:3000
+    loki_url: http://localhost:3100
+    promtail_metrics: http://localhost:9080/metrics
+    log_dashboards:
+    - logs-overview.json
+    - agent-audit.json
+  APIAgent:
+    database: nas_db
+    db_user: nas_api
+    rate_limits:
+      login: 5/min
+      upload: 100/hour
+  ContainerAgent:
+    compose_path: /opt/containers/docker-compose.yml
+    auto_update: true
+  WebUIAgent:
+    build_tool: vite
+    framework: react
+  MobileAgent:
+    bundle_identifier: com.example.nas
+    deployment: testflight
+  PolicyAutomationAgent:
+    repo: /opt/nas/policy-automation
+    rule_format: yaml
+    automation_bus: orchestrator.policy_events
+  ObservabilityAgent:
+    otel_collector: http://localhost:4317
+    trace_backend: tempo
+    slo_store: /var/lib/observability/slo.yaml
+  DocumentationAgent:
+    docs_repo: /opt/nas/docs
+    site_generator: mkdocs
+    publication_channel: docs-terminal
+  AIKnowledgeAgent:
+    vector_store: pgvector
+    embedding_model: clip-large
+    ingest_queue: ai.ingest
+  TestAutomationAgent:
+    test_runner: /opt/nas/tests/run-tests.sh
+    load_profile: /opt/nas/tests/load.yaml
+    report_path: /var/log/test-automation
+permissions:
+# ssh_access Werte:
+# - none: kein direkter SSH-Zugriff
+# - delegated-superuser: Aktionen laufen ausschließlich innerhalb einer von `user` initiierten Session
+  SystemSetupAgent:
+    run_as: root
+    sudo_policy: unrestricted
+    ssh_access: delegated-superuser
+  RAIDConfigAgent:
+    run_as: root
+    sudo_policy: storage-ops
+    ssh_access: none
+  NetworkSecurityAgent:
+    run_as: root
+    sudo_policy: network-security
+    ssh_access: none
+  BackupAgent:
+    run_as: nasbackup
+    sudo_policy:
+    - mount-backup-usb
+    - cryptsetup
+    - rsync-root-read
+    ssh_access: none
+  ServiceAgent:
+    run_as: nasadmin
+    sudo_policy:
+    - systemctl-service
+    - smbpasswd
+    - exportfs
+    ssh_access: none
+  MonitoringAgent:
+    run_as: monitorbot
+    sudo_policy: read-only
+    ssh_access: none
+  APIAgent:
+    run_as: nasapi
+    sudo_policy: no-sudo
+    ssh_access: none
+  ContainerAgent:
+    run_as: nasadmin
+    sudo_policy:
+    - docker-control
+    ssh_access: none
+  WebUIAgent:
+    run_as: buildbot
+    sudo_policy: no-sudo
+    ssh_access: none
+  MobileAgent:
+    run_as: mobileci
+    sudo_policy: no-sudo
+    ssh_access: none
+  PolicyAutomationAgent:
+    run_as: policybot
+    sudo_policy: no-sudo
+    ssh_access: none
+  ObservabilityAgent:
+    run_as: observa
+    sudo_policy:
+    - read-only
+    - systemd-status
+    ssh_access: none
+  DocumentationAgent:
+    run_as: docbot
+    sudo_policy: no-sudo
+    ssh_access: none
+  AIKnowledgeAgent:
+    run_as: aiknow
+    sudo_policy:
+    - docker-control
+    ssh_access: none
+  TestAutomationAgent:
+    run_as: testbot
+    sudo_policy: no-sudo
+    ssh_access: none
+package_policy:
+  approval_agent: SystemSetupAgent
+  allowlist_path: /etc/nas/package-allowlist.yaml
+  request_channel: orchestrator.package_request
+  scan_tools:
+  - clamav
+  - yara
+  cve_sources:
+  - https://security-tracker.debian.org
+  - https://nvd.nist.gov
+  allowlist_doc: AI Agents/systemsetup-allowlist.md
+logging_policy:
+  audit_doc: AI Agents/audit-logging-policy.md
+  logs:
+    package_approvals: /var/log/package-approvals.log
+    package_installs: /var/log/package-installs.log
+    source_fetch: /var/log/source-fetch.log
+    git_operations: /var/log/git-operations.log
+    orchestrator_events: /var/log/agent-orchestrator/events.log
+  retention_months: 12
+  rotation: logrotate daily, keep 365
+  append_only: true

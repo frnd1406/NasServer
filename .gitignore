@@ -1,0 +1,103 @@
+# Secrets & Credentials (Added 2025-11-14 - Secrets Rotation)
+**/secrets.txt
+**/*.key
+**/*token*.txt
+**/.env.local
+**/.env
+**/credentials.json
+**/vault-keys.json
+**/init-keys.json
+**/config.yaml
+infrastructure/api/.env
+infrastructure/api/bin/
+**/.gocache/
+**/.cache/
+.cache/
+**/.npm/
+**/.npx/
+**/.parcel-cache/
+**/.turbo/
+**/.next/
+.obsidian/
+.npm/
+.nvm/
+
+# Platform junk
+**/.DS_Store
+
+# Temporary Files & Build Artifacts (Added 2025-11-15 - File Cleanup)
+*.swp
+*.swo
+*.tmp
+*~
+**/node_modules/
+.backup/
+
+# IDE and Editor specific files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Build artifacts
+/build/
+**/dist/
+/target/
+/out/
+**/bin/
+*.o
+*.a
+*.pyc
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS generated files
+ehthumbs.db
+Thumbs.db
+
+# Test coverage
+/coverage/
+.nyc_output/
+
+# Env files
+.env
+.env.*.local
+.flaskenv
+.venv
+venv/
+
+# misc
+*.sublime-workspace
+*.vscode-workspace
+*.sqlite
+*.sqlite3
+.history/
+*.bak
+\n# Trivy installation files\nLICENSE\ncontrib/\ntrivy_*.tar.gz
+
+# iCloud credentials (CRITICAL - never commit!)
+**/icloud_config/
+**/keyring*
+**/.pyicloud/
+**/cookies/
+
+# Local secrets directory (Phase 3)
+infrastructure/secrets/
+
+# Compiled Go binaries
+infrastructure/analysis/analysis-agent
+infrastructure/monitoring/monitoring-agent

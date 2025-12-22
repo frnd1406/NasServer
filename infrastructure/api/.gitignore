@@ -1,0 +1,2 @@
+.env
+scripts/export-env.sh
