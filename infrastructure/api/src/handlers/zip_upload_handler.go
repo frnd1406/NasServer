@@ -15,20 +15,186 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Security constants for ZIP extraction
 const (
 	// ZipMagicBytes - First 4 bytes of a valid ZIP file
 	ZipMagicBytes = "PK\x03\x04"
 
-	// MaxCompressionRatio - Maximum allowed ratio of uncompressed/compressed size
-	// Prevents zip bombs (e.g., 42.zip where 42KB expands to petabytes)
-	MaxCompressionRatio = 100
+	// MaxDecompressedSize - Maximum total decompressed size (1 GB)
+	// Prevents zip bombs from exhausting disk space
+	MaxDecompressedSize int64 = 1024 * 1024 * 1024
 
-	// MaxUnpackedSize - Hard cap on total extracted content (1GB)
-	MaxUnpackedSize = 1 << 30
+	// MaxFileCount - Maximum number of files allowed in a ZIP
+	// Prevents DoS attacks with millions of small files
+	MaxFileCount = 10000
 
 	// MaxSingleFileSize - Maximum size for a single extracted file (500MB)
-	MaxSingleFileSize = 500 << 20
+	MaxSingleFileSize int64 = 500 * 1024 * 1024
+
+	// MaxCompressionRatio - Maximum allowed ratio of uncompressed/compressed size
+	// Additional protection against sophisticated zip bombs
+	MaxCompressionRatio = 100
 )
+
+// UnzipResult contains information about the extraction result
+type UnzipResult struct {
+	ExtractedFiles []string
+	TotalBytes     int64
+	FileCount      int
+}
+
+// UnzipSecure extracts a ZIP archive securely with multiple protection layers:
+// 1. Path Traversal Prevention (Zip-Slip protection)
+// 2. Zip Bomb Protection (size limit with real-time byte counting)
+// 3. File Count Limit (prevents DoS with many small files)
+//
+// Returns an error immediately if any security check fails.
+func UnzipSecure(zipData []byte, destDir string, logger *logrus.Logger) (*UnzipResult, error) {
+	// Validate destination directory exists and is absolute
+	destDir = filepath.Clean(destDir)
+	if !filepath.IsAbs(destDir) {
+		return nil, fmt.Errorf("destination must be an absolute path")
+	}
+
+	// Create ZIP reader
+	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("invalid or corrupted archive: %w", err)
+	}
+
+	// SECURITY CHECK 1: File Count Limit
+	if len(zipReader.File) > MaxFileCount {
+		return nil, fmt.Errorf("archive contains too many files (%d > %d)", len(zipReader.File), MaxFileCount)
+	}
+
+	// Pre-check: Validate compression ratio before extraction
+	compressedSize := int64(len(zipData))
+	var declaredUncompressed uint64
+	for _, f := range zipReader.File {
+		declaredUncompressed += f.UncompressedSize64
+	}
+	if compressedSize > 0 {
+		ratio := float64(declaredUncompressed) / float64(compressedSize)
+		if ratio > MaxCompressionRatio {
+			return nil, fmt.Errorf("compression ratio too high (%.1f > %d) - possible zip bomb", ratio, MaxCompressionRatio)
+		}
+	}
+
+	// Pre-check: Declared size check
+	if int64(declaredUncompressed) > MaxDecompressedSize {
+		return nil, fmt.Errorf("declared size exceeds limit (%d > %d bytes)", declaredUncompressed, MaxDecompressedSize)
+	}
+
+	result := &UnzipResult{
+		ExtractedFiles: make([]string, 0, len(zipReader.File)),
+	}
+
+	// Track total extracted bytes in real-time
+	var totalExtractedBytes int64
+
+	for _, f := range zipReader.File {
+		// SECURITY CHECK 2: Path Traversal Prevention (Zip-Slip)
+		// This is the most critical security check
+		fpath := filepath.Join(destDir, f.Name)
+
+		// Normalize both paths for comparison
+		cleanDest := filepath.Clean(destDir) + string(os.PathSeparator)
+		cleanFpath := filepath.Clean(fpath)
+
+		// The extracted file path MUST start with the destination directory
+		if !strings.HasPrefix(cleanFpath, cleanDest) && cleanFpath != filepath.Clean(destDir) {
+			return nil, fmt.Errorf("🚨 SECURITY: illegal file path detected: %s (attempted path traversal)", f.Name)
+		}
+
+		// Handle directories
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(fpath, 0755); err != nil {
+				if logger != nil {
+					logger.WithError(err).Warnf("Failed to create directory: %s", fpath)
+				}
+			}
+			continue
+		}
+
+		// Skip files that are too large individually
+		if int64(f.UncompressedSize64) > MaxSingleFileSize {
+			if logger != nil {
+				logger.Warnf("Skipping oversized file: %s (%d bytes > %d limit)", f.Name, f.UncompressedSize64, MaxSingleFileSize)
+			}
+			continue
+		}
+
+		// Create parent directories
+		if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directory for %s: %w", f.Name, err)
+		}
+
+		// Extract file with byte counting
+		bytesWritten, err := extractFileSecure(f, fpath, MaxDecompressedSize-totalExtractedBytes)
+		if err != nil {
+			// Check if it's a size limit error
+			if strings.Contains(err.Error(), "size limit exceeded") {
+				return nil, fmt.Errorf("🚨 SECURITY: zip bomb detected - extraction aborted at %d bytes", totalExtractedBytes+bytesWritten)
+			}
+			return nil, fmt.Errorf("failed to extract %s: %w", f.Name, err)
+		}
+
+		totalExtractedBytes += bytesWritten
+
+		// SECURITY CHECK 3: Real-time Zip Bomb Protection
+		// Check after each file extraction
+		if totalExtractedBytes > MaxDecompressedSize {
+			return nil, fmt.Errorf("🚨 SECURITY: total decompressed size exceeded (%d > %d bytes) - possible zip bomb", totalExtractedBytes, MaxDecompressedSize)
+		}
+
+		result.ExtractedFiles = append(result.ExtractedFiles, f.Name)
+		result.FileCount++
+	}
+
+	result.TotalBytes = totalExtractedBytes
+	return result, nil
+}
+
+// extractFileSecure extracts a single file with byte counting and size limit enforcement
+// Returns the number of bytes written and any error
+func extractFileSecure(f *zip.File, destPath string, remainingBudget int64) (int64, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return 0, fmt.Errorf("open zip entry: %w", err)
+	}
+	defer rc.Close()
+
+	// Force safe permissions (never trust archive permissions)
+	mode := os.FileMode(0644)
+
+	outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return 0, fmt.Errorf("create file: %w", err)
+	}
+	defer outFile.Close()
+
+	// Use a counting writer to track bytes in real-time
+	// Also enforce the remaining budget
+	if remainingBudget <= 0 {
+		return 0, fmt.Errorf("size limit exceeded: no budget remaining")
+	}
+
+	// Limit the reader to the remaining budget
+	limitedReader := io.LimitReader(rc, remainingBudget+1) // +1 to detect overflow
+
+	bytesWritten, err := io.Copy(outFile, limitedReader)
+	if err != nil {
+		return bytesWritten, fmt.Errorf("write file: %w", err)
+	}
+
+	// Check if we hit the limit
+	if bytesWritten > remainingBudget {
+		os.Remove(destPath) // Clean up partial file
+		return bytesWritten, fmt.Errorf("size limit exceeded during extraction")
+	}
+
+	return bytesWritten, nil
+}
 
 // StorageUploadZipHandler handles secure ZIP file uploads with extraction
 // @Summary Upload and extract ZIP archive
@@ -38,7 +204,7 @@ const (
 // @Security CSRFToken
 // @Accept multipart/form-data
 // @Produce json
-// @Param file formance file true "ZIP file to upload"
+// @Param file formData file true "ZIP file to upload"
 // @Param path formData string false "Target directory path"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
@@ -68,7 +234,7 @@ func StorageUploadZipHandler(storage *services.StorageService, logger *logrus.Lo
 		}
 		defer src.Close()
 
-		// SECURITY CHECK 1: Verify Magic Bytes (Trust No Extension)
+		// SECURITY CHECK: Verify Magic Bytes (Trust No Extension)
 		magicBuf := make([]byte, 4)
 		if _, err := io.ReadFull(src, magicBuf); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file too small or unreadable"})
@@ -91,18 +257,10 @@ func StorageUploadZipHandler(storage *services.StorageService, logger *logrus.Lo
 		}
 
 		// Read entire file into memory for zip processing
-		// (Required by archive/zip - streaming not supported)
-		zipData, err := io.ReadAll(io.LimitReader(src, MaxUnpackedSize))
+		// Limit read to prevent memory exhaustion
+		zipData, err := io.ReadAll(io.LimitReader(src, MaxDecompressedSize))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read archive"})
-			return
-		}
-		compressedSize := int64(len(zipData))
-
-		// Open ZIP reader
-		zipReader, err := zip.NewReader(bytes.NewReader(zipData), compressedSize)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or corrupted archive"})
 			return
 		}
 
@@ -113,163 +271,46 @@ func StorageUploadZipHandler(storage *services.StorageService, logger *logrus.Lo
 			return
 		}
 
-		// Pre-calculate total uncompressed size for ratio check
-		var totalUncompressed uint64
-		for _, f := range zipReader.File {
-			totalUncompressed += f.UncompressedSize64
-		}
-
-		// SECURITY CHECK 2: Anti-Zip-Bomb (Ratio Limit)
-		if compressedSize > 0 {
-			ratio := float64(totalUncompressed) / float64(compressedSize)
-			if ratio > MaxCompressionRatio {
+		// Use the secure unzip function
+		result, err := UnzipSecure(zipData, targetDir, logger)
+		if err != nil {
+			// Check for security violations
+			if strings.Contains(err.Error(), "SECURITY") {
 				logger.WithFields(logrus.Fields{
-					"request_id":   requestID,
-					"compressed":   compressedSize,
-					"uncompressed": totalUncompressed,
-					"ratio":        ratio,
-				}).Error("🚨 ZIP BOMB DETECTED - Compression ratio exceeded")
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":   "compression ratio exceeded",
-					"details": "Archive appears to be a zip bomb",
+					"request_id": requestID,
+					"error":      err.Error(),
+				}).Error("Security violation during ZIP extraction")
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":   "security violation",
+					"details": err.Error(),
 				})
 				return
 			}
-		}
 
-		// SECURITY CHECK 3: Hard Cap on Total Size
-		if totalUncompressed > MaxUnpackedSize {
+			// Other errors
 			logger.WithFields(logrus.Fields{
-				"request_id":   requestID,
-				"uncompressed": totalUncompressed,
-				"limit":        MaxUnpackedSize,
-			}).Warn("Archive exceeds maximum uncompressed size")
+				"request_id": requestID,
+				"error":      err.Error(),
+			}).Warn("ZIP extraction failed")
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "archive too large",
-				"details": fmt.Sprintf("Maximum uncompressed size is %d bytes", MaxUnpackedSize),
+				"error":   "extraction failed",
+				"details": err.Error(),
 			})
 			return
 		}
 
-		// Extract files
-		var extractedFiles []string
-		var extractedBytes int64
-
-		for _, f := range zipReader.File {
-			// SECURITY CHECK 4: Anti-Zip-Slip (Path Traversal)
-			destPath, err := safeExtractPath(targetDir, f.Name)
-			if err != nil {
-				logger.WithFields(logrus.Fields{
-					"request_id": requestID,
-					"entry":      f.Name,
-				}).Error("🚨 ZIP SLIP DETECTED - Path traversal attempt")
-				c.JSON(http.StatusForbidden, gin.H{
-					"error":   "security violation",
-					"details": "path traversal detected",
-				})
-				return
-			}
-
-			// Handle directories
-			if f.FileInfo().IsDir() {
-				if err := os.MkdirAll(destPath, 0755); err != nil {
-					logger.WithError(err).Warn("Failed to create directory")
-				}
-				continue
-			}
-
-			// Single file size check
-			if f.UncompressedSize64 > MaxSingleFileSize {
-				logger.WithFields(logrus.Fields{
-					"request_id": requestID,
-					"entry":      f.Name,
-					"size":       f.UncompressedSize64,
-				}).Warn("Single file exceeds size limit")
-				continue // Skip this file
-			}
-
-			// Create parent directories
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				logger.WithError(err).Warn("Failed to create parent directory")
-				continue
-			}
-
-			// Extract file with safe permissions
-			if err := extractFile(f, destPath); err != nil {
-				logger.WithFields(logrus.Fields{
-					"request_id": requestID,
-					"entry":      f.Name,
-					"error":      err.Error(),
-				}).Warn("Failed to extract file")
-				continue
-			}
-
-			extractedFiles = append(extractedFiles, f.Name)
-			extractedBytes += int64(f.UncompressedSize64)
-		}
-
 		logger.WithFields(logrus.Fields{
 			"request_id":      requestID,
-			"files_extracted": len(extractedFiles),
-			"bytes_extracted": extractedBytes,
+			"files_extracted": result.FileCount,
+			"bytes_extracted": result.TotalBytes,
 			"target_path":     targetPath,
 		}).Info("ZIP archive extracted successfully")
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":          "extracted",
-			"files_extracted": len(extractedFiles),
-			"bytes_extracted": extractedBytes,
+			"files_extracted": result.FileCount,
+			"bytes_extracted": result.TotalBytes,
 			"target_path":     targetPath,
 		})
 	}
-}
-
-// safeExtractPath validates and returns a safe extraction path
-// Prevents Zip-Slip attacks by ensuring path stays within target directory
-func safeExtractPath(targetDir, entryName string) (string, error) {
-	// Clean the entry name to remove any ../ sequences
-	cleanEntry := filepath.Clean(entryName)
-
-	// Construct destination path
-	destPath := filepath.Join(targetDir, cleanEntry)
-
-	// Ensure the destination is within the target directory
-	cleanTarget := filepath.Clean(targetDir) + string(os.PathSeparator)
-	cleanDest := filepath.Clean(destPath)
-
-	// Add separator to cleanDest for proper prefix matching
-	if !strings.HasPrefix(cleanDest+string(os.PathSeparator), cleanTarget) && cleanDest != filepath.Clean(targetDir) {
-		return "", fmt.Errorf("path traversal detected: %s", entryName)
-	}
-
-	return destPath, nil
-}
-
-// extractFile extracts a single file from the ZIP archive
-func extractFile(f *zip.File, destPath string) error {
-	rc, err := f.Open()
-	if err != nil {
-		return fmt.Errorf("open zip entry: %w", err)
-	}
-	defer rc.Close()
-
-	// Force safe permissions (never trust archive permissions)
-	mode := os.FileMode(0644)
-	if f.FileInfo().IsDir() {
-		mode = 0755
-	}
-
-	outFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
-	defer outFile.Close()
-
-	// Copy with size limit
-	_, err = io.Copy(outFile, io.LimitReader(rc, MaxSingleFileSize))
-	if err != nil {
-		return fmt.Errorf("write file: %w", err)
-	}
-
-	return nil
 }
