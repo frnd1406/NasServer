@@ -1,6 +1,8 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nas-ai/api/src/models"
 	"github.com/sirupsen/logrus"
 )
 
@@ -293,9 +296,14 @@ func (s *StorageService) ValidateFileSize(file multipart.File, fileHeader *multi
 
 // SaveResult contains metadata about the saved file
 type SaveResult struct {
-	Path     string
-	MimeType string
-	FileID   string
+	Path             string
+	MimeType         string
+	FileID           string
+	SizeBytes        int64                      // Original file size
+	Checksum         string                     // SHA-256 hash of content
+	StoragePath      string                     // Relative path from storage root
+	EncryptionStatus models.EncryptionMode      // NONE, SYSTEM, or USER
+	EncryptionMeta   *models.EncryptionMetadata // Crypto params if encrypted
 }
 
 // Save stores the provided file into the given relative directory.
@@ -366,11 +374,207 @@ func (s *StorageService) Save(dir string, file multipart.File, fileHeader *multi
 		"path":     destPath,
 	}).Info("File uploaded successfully")
 
+	// Calculate relative storage path
+	relStoragePath, _ := filepath.Rel(s.basePath, destPath)
+
+	// Get file size
+	fileInfo, _ := os.Stat(destPath)
+	sizeBytes := int64(0)
+	if fileInfo != nil {
+		sizeBytes = fileInfo.Size()
+	}
+
 	// Create result with metadata
 	result := &SaveResult{
-		Path:     destPath,
-		MimeType: detectedMimeType,
-		FileID:   filepath.Base(filename), // Use filename as ID
+		Path:             destPath,
+		MimeType:         detectedMimeType,
+		FileID:           filepath.Base(filename), // Use filename as ID
+		SizeBytes:        sizeBytes,
+		StoragePath:      relStoragePath,
+		EncryptionStatus: models.EncryptionNone, // Legacy method = no encryption
+	}
+
+	return result, nil
+}
+
+// SaveWithEncryption stores the provided file with optional encryption based on mode.
+// This is the hybrid encryption entry point for Phase 3.
+//
+// Modes:
+//   - NONE: Direct io.Copy to disk (max performance)
+//   - USER: Stream through NasCrypt V2 encryption (max security)
+//   - SYSTEM: Reserved for future server-side encryption
+func (s *StorageService) SaveWithEncryption(
+	dir string,
+	file multipart.File,
+	fileHeader *multipart.FileHeader,
+	encryptionMode models.EncryptionMode,
+	encryptionPassword string, // Required for USER mode
+) (*SaveResult, error) {
+	filename := fileHeader.Filename
+
+	if filename == "" {
+		return nil, fmt.Errorf("filename is required")
+	}
+
+	// Validate encryption mode
+	if !encryptionMode.IsValid() {
+		return nil, fmt.Errorf("invalid encryption mode: %s", encryptionMode)
+	}
+
+	// USER mode requires password
+	if encryptionMode == models.EncryptionUser && encryptionPassword == "" {
+		return nil, fmt.Errorf("encryption password required for USER mode")
+	}
+
+	// SECURITY: Validate file size FIRST
+	if err := s.ValidateFileSize(file, fileHeader); err != nil {
+		return nil, err
+	}
+
+	// Read first 512 bytes for MIME detection
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	// Reset file pointer
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to reset file pointer: %w", err)
+	}
+
+	// Detect MIME type
+	detectedMimeType := http.DetectContentType(buffer[:n])
+
+	// SECURITY: Validate file type
+	if err := s.ValidateFileType(file, filename); err != nil {
+		return nil, err
+	}
+
+	targetDir, err := s.sanitizePath(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create target dir: %w", err)
+	}
+
+	// Determine destination path (add .enc suffix for encrypted files)
+	destFilename := filepath.Base(filename)
+	if encryptionMode == models.EncryptionUser {
+		destFilename = destFilename + ".enc"
+	}
+
+	destPath, err := s.sanitizePath(filepath.Join(dir, destFilename))
+	if err != nil {
+		return nil, err
+	}
+
+	// FILE VERSIONING: If file exists, rotate versions before overwriting
+	if _, err := os.Stat(destPath); err == nil {
+		s.rotateVersions(destPath, 3)
+	}
+
+	dest, err := os.Create(destPath)
+	if err != nil {
+		return nil, err
+	}
+	defer dest.Close()
+
+	// Create checksum writer to calculate hash while writing
+	hasher := sha256.New()
+
+	// Variables to track what we wrote
+	var bytesWritten int64
+	var encryptionMeta *models.EncryptionMetadata
+
+	switch encryptionMode {
+	case models.EncryptionNone:
+		// ==== NONE: Direct copy (max performance) ====
+		// Use TeeReader to calculate checksum while copying
+		teeReader := io.TeeReader(file, hasher)
+		bytesWritten, err = io.Copy(dest, teeReader)
+		if err != nil {
+			os.Remove(destPath) // Cleanup on failure
+			return nil, fmt.Errorf("write file: %w", err)
+		}
+
+		s.logger.WithFields(logrus.Fields{
+			"filename": filename,
+			"path":     destPath,
+			"mode":     "NONE",
+			"size":     bytesWritten,
+		}).Info("File uploaded (unencrypted)")
+
+	case models.EncryptionUser:
+		// ==== USER: Stream through NasCrypt V2 encryption ====
+		// Note: Checksum is of ENCRYPTED data (not plaintext)
+		teeWriter := io.MultiWriter(dest, hasher)
+
+		err = EncryptStream(encryptionPassword, file, teeWriter)
+		if err != nil {
+			os.Remove(destPath) // Cleanup on failure
+			return nil, fmt.Errorf("encryption failed: %w", err)
+		}
+
+		// Get size of encrypted file
+		fileInfo, _ := os.Stat(destPath)
+		if fileInfo != nil {
+			bytesWritten = fileInfo.Size()
+		}
+
+		// Store encryption metadata
+		encryptionMeta = &models.EncryptionMetadata{
+			Algorithm: "XChaCha20-Poly1305",
+			Argon2Params: &models.Argon2Params{
+				Time:    ArgonTime,
+				Memory:  ArgonMemory,
+				Threads: ArgonThreads,
+			},
+			KeyVersion: 1,
+		}
+
+		s.logger.WithFields(logrus.Fields{
+			"filename":       filename,
+			"path":           destPath,
+			"mode":           "USER",
+			"encrypted_size": bytesWritten,
+		}).Info("File uploaded (encrypted)")
+
+	case models.EncryptionSystem:
+		// SYSTEM mode: Reserved for future implementation
+		// For now, fall back to NONE
+		s.logger.Warn("SYSTEM encryption mode not yet implemented, falling back to NONE")
+		teeReader := io.TeeReader(file, hasher)
+		bytesWritten, err = io.Copy(dest, teeReader)
+		if err != nil {
+			os.Remove(destPath)
+			return nil, fmt.Errorf("write file: %w", err)
+		}
+		encryptionMode = models.EncryptionNone
+
+	default:
+		return nil, fmt.Errorf("unsupported encryption mode: %s", encryptionMode)
+	}
+
+	// Calculate final checksum
+	checksum := hex.EncodeToString(hasher.Sum(nil))
+
+	// Calculate relative storage path
+	relStoragePath, _ := filepath.Rel(s.basePath, destPath)
+
+	// Create result with full metadata
+	result := &SaveResult{
+		Path:             destPath,
+		MimeType:         detectedMimeType,
+		FileID:           filepath.Base(destFilename),
+		SizeBytes:        bytesWritten,
+		Checksum:         checksum,
+		StoragePath:      relStoragePath,
+		EncryptionStatus: encryptionMode,
+		EncryptionMeta:   encryptionMeta,
 	}
 
 	return result, nil

@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/config"
+	"github.com/nas-ai/api/src/models"
 	"github.com/nas-ai/api/src/services"
 	"github.com/sirupsen/logrus"
 )
@@ -243,6 +244,35 @@ func StorageUploadHandler(storage *services.StorageService, honeySvc *services.H
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
 
+		// ==== PHASE 3: Hybrid Encryption Support ====
+		// Read encryption parameters from form
+		encryptionModeStr := c.PostForm("encryption_mode")      // NONE, SYSTEM, USER
+		encryptionPassword := c.PostForm("encryption_password") // Required for USER mode
+
+		// Default to NONE if not specified (backward compatibility)
+		var encryptionMode models.EncryptionMode
+		switch strings.ToUpper(encryptionModeStr) {
+		case "USER":
+			encryptionMode = models.EncryptionUser
+		case "SYSTEM":
+			encryptionMode = models.EncryptionSystem
+		case "NONE", "":
+			encryptionMode = models.EncryptionNone
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "invalid encryption_mode: must be NONE, SYSTEM, or USER",
+			})
+			return
+		}
+
+		// Validate USER mode has password
+		if encryptionMode == models.EncryptionUser && encryptionPassword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "encryption_password is required when encryption_mode is USER",
+			})
+			return
+		}
+
 		fileHeader, err := c.FormFile("file")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
@@ -260,34 +290,55 @@ func StorageUploadHandler(storage *services.StorageService, honeySvc *services.H
 		}
 		defer src.Close()
 
-		// Save file and get metadata
-		result, err := storage.Save(path, src, fileHeader)
+		// ==== SAVE FILE (with or without encryption) ====
+		var result *services.SaveResult
+
+		if encryptionMode == models.EncryptionNone {
+			// Legacy path: No encryption
+			result, err = storage.Save(path, src, fileHeader)
+		} else {
+			// New path: Hybrid encryption
+			result, err = storage.SaveWithEncryption(path, src, fileHeader, encryptionMode, encryptionPassword)
+		}
+
 		if err != nil {
 			handleStorageError(c, err, logger, requestID)
 			return
 		}
 
-		// Trigger AI agent notification (fire & forget)
-		// This happens AFTER successful save to disk
+		// Log encryption status
+		logger.WithFields(logrus.Fields{
+			"request_id":      requestID,
+			"filename":        fileHeader.Filename,
+			"encryption_mode": encryptionMode,
+			"size_bytes":      result.SizeBytes,
+			"checksum":        result.Checksum,
+		}).Info("File upload completed")
 
-		// Extract content for AI indexing (RAM-Push)
-		var extractedText string
-		if aiIndexableMimeTypes[result.MimeType] {
-			// Rewind source stream to beginning
-			if _, err := src.Seek(0, 0); err == nil {
-				// Limit content extraction to 2MB to avoid OOM
-				const MaxIndexSize = 2 * 1024 * 1024
-
-				buf := new(bytes.Buffer)
-				io.CopyN(buf, src, MaxIndexSize)
-				extractedText = buf.String()
-			} else {
-				logger.Warn("Could not seek upload stream for AI indexing")
+		// ==== AI AGENT NOTIFICATION ====
+		// Only index UNENCRYPTED files (can't index encrypted content!)
+		if encryptionMode == models.EncryptionNone {
+			var extractedText string
+			if aiIndexableMimeTypes[result.MimeType] {
+				if _, err := src.Seek(0, 0); err == nil {
+					const MaxIndexSize = 2 * 1024 * 1024
+					buf := new(bytes.Buffer)
+					io.CopyN(buf, src, MaxIndexSize)
+					extractedText = buf.String()
+				}
 			}
+			notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, honeySvc, cfg.InternalAPISecret, logger)
+		} else {
+			logger.WithField("filename", fileHeader.Filename).Debug("Skipping AI indexing for encrypted file")
 		}
-		notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, honeySvc, cfg.InternalAPISecret, logger)
 
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		// Return enhanced response with encryption metadata
+		c.JSON(http.StatusOK, gin.H{
+			"status":            "ok",
+			"encryption_status": encryptionMode,
+			"size_bytes":        result.SizeBytes,
+			"checksum":          result.Checksum,
+		})
 	}
 }
 
