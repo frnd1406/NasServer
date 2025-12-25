@@ -44,7 +44,7 @@ func TestSecureAIFeeder_FeedContent_PushMode(t *testing.T) {
 	logger.SetOutput(io.Discard) // Silence logs during test
 
 	// We don't need EncryptionService for FeedContent, so passing nil is fine
-	feeder := NewSecureAIFeeder(nil, mockServer.URL, logger)
+	feeder := NewSecureAIFeeder(nil, mockServer.URL, "", logger)
 
 	// Execute
 	err := feeder.FeedContent("secret content", "test.enc", "/path/to/test.enc", "text/plain")
