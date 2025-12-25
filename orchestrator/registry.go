@@ -11,10 +11,10 @@ import (
 
 // ServiceRegistryEntry represents a service in the registry
 type ServiceRegistryEntry struct {
-	Name         string    `json:"name"`
-	URL          string    `json:"url"`
-	RegisteredAt time.Time `json:"registered_at"`
-	Tags         []string  `json:"tags,omitempty"`
+	Name         string            `json:"name"`
+	URL          string            `json:"url"`
+	RegisteredAt time.Time         `json:"registered_at"`
+	Tags         []string          `json:"tags,omitempty"`
 	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
@@ -185,7 +185,11 @@ func (sr *ServiceRegistry) Load() error {
 	return nil
 }
 
-// save writes the registry to disk
+// save writes the registry to disk using atomic write pattern
+// This prevents data corruption on crash/power loss by:
+// 1. Writing to a temporary file
+// 2. Syncing to disk (fsync)
+// 3. Atomically renaming temp -> target (POSIX guarantees atomicity)
 func (sr *ServiceRegistry) save() error {
 	entries := make([]*ServiceRegistryEntry, 0, len(sr.services))
 	for _, entry := range sr.services {
@@ -197,8 +201,32 @@ func (sr *ServiceRegistry) save() error {
 		return fmt.Errorf("failed to marshal registry: %w", err)
 	}
 
-	if err := os.WriteFile(sr.filepath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write registry: %w", err)
+	// Atomic Write Pattern: temp file -> fsync -> rename
+	tempPath := sr.filepath + ".tmp"
+
+	// Step 1: Write to temp file
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write temp registry: %w", err)
+	}
+
+	// Step 2: Fsync to ensure data is on disk before rename
+	tempFile, err := os.Open(tempPath)
+	if err != nil {
+		os.Remove(tempPath) // Cleanup on error
+		return fmt.Errorf("failed to open temp file for sync: %w", err)
+	}
+	if err := tempFile.Sync(); err != nil {
+		tempFile.Close()
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+	tempFile.Close()
+
+	// Step 3: Atomic rename (guaranteed by POSIX)
+	// Either old file exists or new file exists, never corrupted state
+	if err := os.Rename(tempPath, sr.filepath); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to rename temp to registry: %w", err)
 	}
 
 	return nil
