@@ -313,7 +313,7 @@ func serveEncryptedFile(
 }
 
 // serveEncryptedRange handles Range requests for encrypted files
-// This enables video seeking in encrypted files
+// This enables video seeking in encrypted files using chunk-level seeking
 func serveEncryptedRange(
 	c *gin.Context,
 	file *os.File,
@@ -326,59 +326,40 @@ func serveEncryptedRange(
 	logger *logrus.Logger,
 	requestID string,
 ) {
-	// Parse Range header: "bytes=0-1023" or "bytes=1024-"
-	rangeStart, rangeEnd, err := parseRangeHeader(rangeHeader, fileInfo.Size())
+	// Get encrypted file info to calculate plaintext size
+	encInfo, err := services.GetEncryptedFileInfo(file)
 	if err != nil {
-		c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileInfo.Size()))
+		logger.WithError(err).Error("Failed to get encrypted file info")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file metadata"})
+		return
+	}
+
+	if !encInfo.IsValid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is not properly encrypted"})
+		return
+	}
+
+	// Use estimated plaintext size for range validation
+	plaintextSize := encInfo.EstimatedPlainSize
+
+	// Parse Range header using plaintext size
+	rangeStart, rangeEnd, err := parseRangeHeader(rangeHeader, plaintextSize)
+	if err != nil {
+		c.Header("Content-Range", fmt.Sprintf("bytes */%d", plaintextSize))
 		c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"error": "invalid range"})
 		return
 	}
 
-	logger.WithFields(logrus.Fields{
-		"request_id":  requestID,
-		"range_start": rangeStart,
-		"range_end":   rangeEnd,
-	}).Debug("Processing encrypted range request")
-
-	// ==== CHUNK-BASED RANGE SEEKING ====
-	//
-	// NasCrypt V2 uses 64KB chunks. To serve a range request:
-	// 1. Calculate which chunk contains the start byte
-	// 2. Seek to that chunk in the encrypted file
-	// 3. Decrypt from that chunk and skip bytes until start
-	// 4. Stream until end byte
-	//
-	// This is CPU-intensive but enables video seeking in encrypted files
-
-	// Calculate plaintext position from encrypted file position
-	// Header: 45 bytes, Encrypted chunk: 64KB + 16 bytes (tag)
-	const headerSize = services.HeaderSize                 // 45
-	const chunkSize = services.ChunkSize                   // 64KB
-	const encryptedChunkSize = services.EncryptedChunkSize // 64KB + 16
-
-	// Find which chunk contains rangeStart
-	startChunk := rangeStart / int64(chunkSize)
-	_ = startChunk // TODO: Use for chunk-level seeking optimization
-
-	// Calculate offset within that chunk
-	_offsetInChunk := rangeStart % int64(chunkSize)
-	_ = _offsetInChunk // TODO: Use for precise byte-level seeking
-
-	// Seek to the start of that chunk in the encrypted file
-	_encryptedOffset := int64(headerSize) + (startChunk * int64(encryptedChunkSize))
-	_ = _encryptedOffset // TODO: Use for efficient chunk seeking
-
-	// For now, we decrypt from the beginning for simplicity
-	// TODO: Implement chunk-level seeking for better performance
-
-	// Reset file to beginning
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seek failed"})
-		return
-	}
-
-	// Calculate how many bytes to serve
+	// Calculate content length for this range
 	contentLength := rangeEnd - rangeStart + 1
+
+	logger.WithFields(logrus.Fields{
+		"request_id":     requestID,
+		"range_start":    rangeStart,
+		"range_end":      rangeEnd,
+		"content_length": contentLength,
+		"plaintext_size": plaintextSize,
+	}).Debug("Processing encrypted range request with chunk-seeking")
 
 	// Set headers for partial content
 	disposition := "attachment"
@@ -388,28 +369,43 @@ func serveEncryptedRange(
 	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, filename))
 	c.Header("Content-Type", contentType)
 	c.Header("Accept-Ranges", "bytes")
-
-	// Note: For encrypted files, we estimate the decrypted size
-	// Actual range response is approximate
-	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/*", rangeStart, rangeEnd))
+	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", rangeStart, rangeEnd, plaintextSize))
 	c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
 
 	c.Status(http.StatusPartialContent)
 
-	// Create a limited reader that skips and limits bytes
-	skipWriter := &skipLimitWriter{
-		writer:     c.Writer,
-		skipBytes:  rangeStart + (startChunk * int64(chunkSize)) - rangeStart, // Adjust for chunk alignment
-		limitBytes: contentLength,
-		written:    0,
+	// ==== USE OPTIMIZED CHUNK-SEEKING DECRYPTION ====
+	// DecryptStreamWithSeek:
+	// 1. Reads header from position 0 (always required)
+	// 2. Calculates target chunk from rangeStart
+	// 3. Seeks directly to that chunk's encrypted position
+	// 4. Decrypts and outputs only the requested bytes
+
+	bytesWritten, err := services.DecryptStreamWithSeek(password, file, c.Writer, rangeStart, contentLength)
+	if err != nil {
+		// Check for authentication failure (wrong password)
+		if errors.Is(err, services.ErrCorruptedData) || errors.Is(err, services.ErrInvalidHeader) {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"error":      err.Error(),
+			}).Warn("Range decryption failed - possible wrong password")
+			return
+		}
+
+		logger.WithFields(logrus.Fields{
+			"request_id":    requestID,
+			"error":         err.Error(),
+			"bytes_written": bytesWritten,
+		}).Error("Range decryption stream failed")
+		return
 	}
 
-	// Simple approach: decrypt entire file but skip/limit output
-	// TODO: Optimize with chunk-level seeking
-	err = services.DecryptStream(password, file, skipWriter)
-	if err != nil && !errors.Is(err, errLimitReached) {
-		logger.WithError(err).Warn("Range decryption failed")
-	}
+	logger.WithFields(logrus.Fields{
+		"request_id":    requestID,
+		"range_start":   rangeStart,
+		"range_end":     rangeEnd,
+		"bytes_written": bytesWritten,
+	}).Debug("Encrypted range served successfully")
 }
 
 // skipLimitWriter skips initial bytes and limits output

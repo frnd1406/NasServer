@@ -537,6 +537,230 @@ func IsEncrypted(reader io.Reader) bool {
 	return string(magic) == MagicBytes
 }
 
+// ==============================================================================
+// CHUNK-LEVEL SEEKING FOR RANGE REQUESTS
+// ==============================================================================
+// These functions enable efficient video seeking in encrypted files by:
+// 1. Reading the header from position 0 (always required for key derivation)
+// 2. Calculating the target chunk based on requested plaintext offset
+// 3. Seeking directly to that chunk's encrypted position
+// 4. Decrypting from that chunk onwards
+//
+// This avoids re-decrypting the entire file for Range requests.
+// ==============================================================================
+
+// DecryptStreamWithSeek decrypts data starting from a specific plaintext byte offset.
+// This is optimized for Range requests - it seeks to the correct chunk instead of
+// decrypting from the beginning.
+//
+// Parameters:
+//   - password: Decryption password
+//   - input: Seekable encrypted file (must support Seek)
+//   - output: Where to write decrypted data
+//   - startByte: Plaintext byte offset to start decryption from
+//   - maxBytes: Maximum bytes to decrypt (0 = unlimited)
+//
+// Returns the number of plaintext bytes written.
+func DecryptStreamWithSeek(password string, input io.ReadSeeker, output io.Writer, startByte, maxBytes int64) (int64, error) {
+	// Step 1: Always read header from position 0
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return 0, fmt.Errorf("failed to seek to header: %w", err)
+	}
+
+	header := make([]byte, HeaderSize)
+	if _, err := io.ReadFull(input, header); err != nil {
+		return 0, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	// Validate magic bytes
+	if string(header[0:4]) != MagicBytes {
+		return 0, ErrInvalidHeader
+	}
+
+	// Check version
+	version := header[4]
+	if version != Version {
+		return 0, fmt.Errorf("%w: got 0x%02x, expected 0x%02x", ErrUnsupportedVersion, version, Version)
+	}
+
+	// Extract salt and base nonce
+	salt := header[5 : 5+SaltSize]
+	baseNonce := header[5+SaltSize : 5+SaltSize+NonceSize]
+
+	// Step 2: Derive encryption key
+	key := argon2.IDKey([]byte(password), salt, ArgonTime, ArgonMemory, ArgonThreads, ArgonKeyLen)
+	defer secureWipe(key)
+
+	// Create XChaCha20-Poly1305 AEAD cipher
+	aead, err := chacha20poly1305.NewX(key)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	// Step 3: Calculate which chunk contains startByte
+	startChunk := uint64(startByte / int64(ChunkSize))
+	offsetInChunk := startByte % int64(ChunkSize)
+
+	// Calculate encrypted file position for that chunk
+	// Position = Header + (ChunkIndex * EncryptedChunkSize)
+	encryptedOffset := int64(HeaderSize) + int64(startChunk)*int64(EncryptedChunkSize)
+
+	// Seek to the start of the target chunk
+	if _, err := input.Seek(encryptedOffset, io.SeekStart); err != nil {
+		return 0, fmt.Errorf("failed to seek to chunk %d: %w", startChunk, err)
+	}
+
+	// Step 4: Decrypt from that chunk onwards
+	ciphertextPtr := ciphertextPool.Get().(*[]byte)
+	ciphertext := *ciphertextPtr
+	defer ciphertextPool.Put(ciphertextPtr)
+
+	noncePtr := noncePool.Get().(*[]byte)
+	chunkNonce := *noncePtr
+	defer noncePool.Put(noncePtr)
+
+	plaintextBuf := make([]byte, 0, ChunkSize)
+
+	var bytesWritten int64
+	chunkIndex := startChunk
+	firstChunk := true
+
+	for {
+		// Check if we've written enough
+		if maxBytes > 0 && bytesWritten >= maxBytes {
+			break
+		}
+
+		// Read encrypted chunk
+		n, err := io.ReadFull(input, ciphertext)
+		if err == io.EOF {
+			break
+		}
+		if err != nil && err != io.ErrUnexpectedEOF {
+			return bytesWritten, fmt.Errorf("failed to read chunk %d: %w", chunkIndex, err)
+		}
+
+		if n < TagSize {
+			return bytesWritten, fmt.Errorf("chunk %d too short: %d bytes", chunkIndex, n)
+		}
+
+		// Derive chunk-specific nonce
+		deriveChunkNonceInPlace(baseNonce, chunkIndex, chunkNonce)
+
+		// Decrypt and authenticate the chunk
+		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
+		if err != nil {
+			return bytesWritten, fmt.Errorf("%w: chunk %d authentication failed", ErrCorruptedData, chunkIndex)
+		}
+
+		// For the first chunk, skip bytes up to the offset
+		writeData := plaintextBuf
+		if firstChunk && offsetInChunk > 0 {
+			if offsetInChunk >= int64(len(plaintextBuf)) {
+				// Entire chunk should be skipped (shouldn't happen with correct calculation)
+				chunkIndex++
+				firstChunk = false
+				continue
+			}
+			writeData = plaintextBuf[offsetInChunk:]
+			firstChunk = false
+		}
+
+		// Limit output if maxBytes is set
+		if maxBytes > 0 {
+			remaining := maxBytes - bytesWritten
+			if int64(len(writeData)) > remaining {
+				writeData = writeData[:remaining]
+			}
+		}
+
+		written, err := output.Write(writeData)
+		if err != nil {
+			return bytesWritten, fmt.Errorf("failed to write chunk %d: %w", chunkIndex, err)
+		}
+		bytesWritten += int64(written)
+
+		chunkIndex++
+
+		if n < EncryptedChunkSize {
+			break // Last chunk was partial
+		}
+	}
+
+	return bytesWritten, nil
+}
+
+// CalculateDecryptedSize estimates the plaintext size from encrypted file size.
+// This is useful for Content-Length headers in Range responses.
+func CalculateDecryptedSize(encryptedSize int64) int64 {
+	if encryptedSize <= HeaderSize {
+		return 0
+	}
+
+	// Subtract header
+	dataSize := encryptedSize - int64(HeaderSize)
+
+	// Calculate number of complete chunks
+	numChunks := dataSize / int64(EncryptedChunkSize)
+	remainder := dataSize % int64(EncryptedChunkSize)
+
+	// Each chunk is ChunkSize plaintext
+	plaintextSize := numChunks * int64(ChunkSize)
+
+	// Add remaining bytes (minus tag if present)
+	if remainder > TagSize {
+		plaintextSize += remainder - TagSize
+	}
+
+	return plaintextSize
+}
+
+// GetEncryptedFileInfo reads the header and returns metadata about an encrypted file.
+type EncryptedFileInfo struct {
+	IsValid            bool
+	Version            byte
+	Salt               []byte
+	BaseNonce          []byte
+	EncryptedSize      int64
+	EstimatedPlainSize int64
+}
+
+func GetEncryptedFileInfo(input io.ReadSeeker) (*EncryptedFileInfo, error) {
+	info := &EncryptedFileInfo{}
+
+	// Get file size
+	size, err := input.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, err
+	}
+	info.EncryptedSize = size
+
+	// Read header
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	header := make([]byte, HeaderSize)
+	if _, err := io.ReadFull(input, header); err != nil {
+		return nil, err
+	}
+
+	// Validate
+	if string(header[0:4]) != MagicBytes {
+		return info, nil // Not valid but no error
+	}
+
+	info.IsValid = true
+	info.Version = header[4]
+	info.Salt = make([]byte, SaltSize)
+	copy(info.Salt, header[5:5+SaltSize])
+	info.BaseNonce = make([]byte, NonceSize)
+	copy(info.BaseNonce, header[5+SaltSize:5+SaltSize+NonceSize])
+	info.EstimatedPlainSize = CalculateDecryptedSize(size)
+
+	return info, nil
+}
+
 // IsEncryptedFile checks if a file is encrypted with NasCrypt format.
 // Opens the file, checks the magic bytes, and closes it.
 func IsEncryptedFile(path string) (bool, error) {
