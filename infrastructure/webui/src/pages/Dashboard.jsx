@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSystemHealth } from "../hooks/useSystemHealth";
+import { useVault } from "../context/VaultContext";
 import {
   ShieldCheck,
   ShieldAlert,
@@ -10,6 +11,8 @@ import {
   Cpu,
   MemoryStick,
   HardDrive,
+  Lock,
+  AlertTriangle,
 } from "lucide-react";
 import { DashboardSkeleton } from "../components/Skeleton";
 import SystemHealthCard from "../components/SystemHealthCard";
@@ -26,6 +29,7 @@ const GlassCard = ({ children, className = "" }) => (
 
 export default function Dashboard() {
   const { data, isLoading } = useSystemHealth();
+  const { vaultConfig, isLoading: vaultLoading } = useVault();
   const settings = data?.settings;
   const lastBackup = data?.lastBackup;
   const snapshotCount = data?.snapshotCount || 0;
@@ -91,6 +95,27 @@ export default function Dashboard() {
           Systemübersicht und Status
         </p>
       </div>
+
+      {/* Vault Not Configured Warning */}
+      {!vaultLoading && !vaultConfig && (
+        <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-amber-500/10 backdrop-blur-xl shadow-lg">
+          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent"></div>
+          <div className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/30 shrink-0">
+              <Lock size={24} className="text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle size={16} className="text-amber-400" />
+                <p className="text-amber-300 font-semibold text-sm uppercase tracking-wider">Vault nicht eingerichtet</p>
+              </div>
+              <p className="text-amber-200/80 text-sm">
+                Für verschlüsselte Dateispeicherung gehe zu <a href="/files" className="text-amber-400 hover:text-amber-300 underline font-medium">Dateien → vault</a> und richte die Ende-zu-Ende-Verschlüsselung ein.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Grid - 3 Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
