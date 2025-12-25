@@ -19,7 +19,10 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
 
     // Load files from a directory
     const loadFiles = useCallback(async (target = path) => {
-        if (!authHeaders().Authorization) {
+        // Check if user might be logged in (CSRF token exists)
+        // Note: Access token is now in HttpOnly cookie, can't check directly
+        const csrfToken = localStorage.getItem('csrfToken') || localStorage.getItem('csrf_token');
+        if (!csrfToken) {
             setError('Bitte zuerst einloggen.');
             return;
         }

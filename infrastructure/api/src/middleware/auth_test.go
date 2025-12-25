@@ -157,7 +157,8 @@ func TestAuthMiddleware_InvalidHeaderFormat(t *testing.T) {
 			router.ServeHTTP(w, req)
 
 			assert.Equal(t, http.StatusUnauthorized, w.Code)
-			assert.Contains(t, w.Body.String(), "Invalid authorization header format")
+			// Invalid header formats now result in "no token" since the helper returns empty string
+			assert.Contains(t, w.Body.String(), "Missing authorization token")
 		})
 	}
 }

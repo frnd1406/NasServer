@@ -80,14 +80,12 @@ export function VaultProvider({ children }) {
         formData.append('file', blob, '.meta.json'); // Filename
 
         // Upload to /vault/
+        // Note: Access token is now sent via HttpOnly cookie
         await fetch('/api/v1/storage/upload?path=vault', {
             method: 'POST',
             body: formData,
-            // Auth headers handled by browser/cookies usually, or needing manual insert if JWT?
-            // Our apiRequest helper handles JSON but not FormData easily for Uploads usually.
-            // Let's rely on standard fetch inside wrapper if possible or construct headers.
+            credentials: 'include', // Send auth cookie
             headers: {
-                'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
                 'X-CSRF-Token': localStorage.getItem('csrfToken') || ''
             }
         });

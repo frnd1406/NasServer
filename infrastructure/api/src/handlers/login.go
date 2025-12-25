@@ -18,11 +18,10 @@ type LoginRequest struct {
 }
 
 // LoginResponse represents the login response
+// Note: Access and Refresh tokens are now sent as HttpOnly cookies, not in JSON body
 type LoginResponse struct {
-	User         interface{} `json:"user"`
-	AccessToken  string      `json:"access_token"`
-	RefreshToken string      `json:"refresh_token"`
-	CSRFToken    string      `json:"csrf_token"`
+	User      interface{} `json:"user"`
+	CSRFToken string      `json:"csrf_token"`
 }
 
 // LoginHandler godoc
@@ -153,11 +152,12 @@ func LoginHandler(
 			"ip":         c.ClientIP(),
 		}).Info("User logged in successfully")
 
+		// Set auth tokens as HttpOnly cookies (XSS protection)
+		SetAuthCookies(c, accessToken, refreshToken)
+
 		c.JSON(http.StatusOK, LoginResponse{
-			User:         user.ToResponse(),
-			AccessToken:  accessToken,
-			RefreshToken: refreshToken,
-			CSRFToken:    csrfToken,
+			User:      user.ToResponse(),
+			CSRFToken: csrfToken,
 		})
 	}
 }

@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,9 +31,9 @@ func LogoutHandler(
 		requestID := c.GetString("request_id")
 		userID := c.GetString("user_id")
 
-		// Extract token from Authorization header
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		// Get access token from cookie or header (using helper for compatibility)
+		tokenString := GetAccessToken(c)
+		if tokenString == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": gin.H{
 					"code":       "unauthorized",
@@ -44,20 +43,6 @@ func LogoutHandler(
 			})
 			return
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":       "unauthorized",
-					"message":    "Invalid authorization header",
-					"request_id": requestID,
-				},
-			})
-			return
-		}
-
-		tokenString := parts[1]
 
 		// Extract claims to get expiry time
 		claims, err := jwtService.ExtractClaims(tokenString)
@@ -97,6 +82,9 @@ func LogoutHandler(
 			"user_id":    userID,
 			"ip":         c.ClientIP(),
 		}).Info("User logged out successfully")
+
+		// Clear auth cookies (for cookie-based auth)
+		ClearAuthCookies(c)
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Logged out successfully",

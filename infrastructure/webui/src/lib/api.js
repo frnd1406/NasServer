@@ -202,48 +202,48 @@ function showLogoutOverlay(seconds) {
   }, 1000);
 }
 
+/**
+ * Clear auth data on logout
+ * Note: HttpOnly cookies will be cleared by the server on logout
+ * We only clear the CSRF token from localStorage
+ */
 function clearAuth() {
+  localStorage.removeItem("csrfToken");
+  localStorage.removeItem("csrf_token");
+  // Legacy cleanup
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
-  localStorage.removeItem("csrfToken");
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
-  localStorage.removeItem("csrf_token");
 }
 
+/**
+ * Refresh access token using HttpOnly cookie
+ * The refresh token is automatically sent via cookie
+ * Server will set new access_token cookie on success
+ */
 async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem("refreshToken");
-  if (!refreshToken) return null;
-
   try {
     const res = await fetch(buildUrl("/auth/refresh"), {
       method: "POST",
+      credentials: "include", // Send cookies
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
     });
 
     if (!res.ok) {
-      return null;
+      return false;
     }
 
     const data = await res.json().catch(() => null);
-    const newAccessToken = data?.access_token || data?.token;
 
-    if (!newAccessToken) {
-      return null;
-    }
-
-    localStorage.setItem("accessToken", newAccessToken);
-    if (data?.refresh_token) {
-      localStorage.setItem("refreshToken", data.refresh_token);
-    }
+    // Update CSRF token if provided
     if (data?.csrf_token) {
       localStorage.setItem("csrfToken", data.csrf_token);
     }
 
-    return newAccessToken;
+    return true; // Success - new access token is in cookie
   } catch (err) {
-    return null;
+    return false;
   }
 }
 
@@ -264,16 +264,19 @@ function redirectToLogin() {
   }, LOGOUT_COUNTDOWN_SECONDS * 1000);
 }
 
-function buildHeaders(accessToken, headersOverride = {}) {
+/**
+ * Build headers for API requests
+ * Note: Access token is now sent automatically via HttpOnly cookie
+ * We only need to include CSRF token for state-changing requests
+ */
+function buildHeaders(headersOverride = {}) {
   const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
   const headers = {
     "Content-Type": "application/json",
     ...headersOverride,
   };
 
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
+  // CSRF token still needs to be sent as header
   if (csrfToken && !headers["X-CSRF-Token"]) {
     headers["X-CSRF-Token"] = csrfToken;
   }
@@ -285,8 +288,11 @@ function extractErrorMessage(res, data) {
   return data?.error?.message || data?.error || res.statusText || "Request failed";
 }
 
-async function performRequest(path, options, tokenOverride) {
-  const accessToken = tokenOverride || localStorage.getItem("accessToken");
+/**
+ * Perform HTTP request with cookie-based auth
+ * Access token is sent automatically via HttpOnly cookie
+ */
+async function performRequest(path, options) {
   let res;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
@@ -295,8 +301,8 @@ async function performRequest(path, options, tokenOverride) {
     res = await fetch(buildUrl(path), {
       ...options,
       signal: controller.signal,
-      credentials: 'include', // <--- WICHTIG: HINZUFÜGEN [Fix für BUG-JS-002]
-      headers: buildHeaders(accessToken, options.headers || {}),
+      credentials: 'include', // IMPORTANT: Send cookies with request
+      headers: buildHeaders(options.headers || {}),
     });
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -331,10 +337,10 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (firstAttempt.res.status === 401) {
-    const newAccessToken = await refreshAccessToken();
+    const refreshed = await refreshAccessToken();
 
-    if (newAccessToken) {
-      const retry = await performRequest(path, options, newAccessToken);
+    if (refreshed) {
+      const retry = await performRequest(path, options);
 
       if (retry.res.ok) {
         return retry.data;
@@ -488,15 +494,13 @@ export async function batchDownload(paths) {
     throw new Error("No files selected for download");
   }
 
-  const accessToken = localStorage.getItem("accessToken");
   const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
 
   const res = await fetch(buildUrl("/api/v1/storage/batch-download"), {
     method: "POST",
-    credentials: "include",
+    credentials: "include", // Send auth cookie
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
       "X-CSRF-Token": csrfToken,
     },
     body: JSON.stringify({ paths }),
@@ -519,14 +523,12 @@ export async function downloadFolderAsZip(path) {
     throw new Error("Folder path is required");
   }
 
-  const accessToken = localStorage.getItem("accessToken");
   const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
 
   const res = await fetch(buildUrl(`/api/v1/storage/download-zip?path=${encodeURIComponent(path)}`), {
     method: "GET",
-    credentials: "include",
+    credentials: "include", // Send auth cookie
     headers: {
-      Authorization: `Bearer ${accessToken}`,
       "X-CSRF-Token": csrfToken,
     },
   });

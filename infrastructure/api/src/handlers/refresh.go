@@ -10,23 +10,25 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// RefreshRequest represents the refresh token request
+// RefreshRequest represents the refresh token request (for backward compatibility)
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // RefreshResponse represents the refresh token response
+// Note: Access token is now also set as HttpOnly cookie
 type RefreshResponse struct {
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"access_token,omitempty"` // Kept for backward compat, will be empty in future
+	Success     bool   `json:"success"`
 }
 
 // RefreshHandler godoc
 // @Summary Refresh access token
-// @Description Gets new access token using valid refresh token
+// @Description Gets new access token using valid refresh token (from cookie or body)
 // @Tags Authentication
 // @Accept json
 // @Produce json
-// @Param request body RefreshRequest true "Refresh token"
+// @Param request body RefreshRequest false "Refresh token (optional if using cookies)"
 // @Success 200 {object} RefreshResponse "New access token issued"
 // @Failure 400 {object} map[string]interface{} "Invalid request"
 // @Failure 401 {object} map[string]interface{} "Invalid or expired refresh token"
@@ -39,16 +41,23 @@ func RefreshHandler(
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
-		var req RefreshRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			logger.WithFields(logrus.Fields{
-				"request_id": requestID,
-				"error":      err.Error(),
-			}).Warn("Invalid refresh request")
+		// Try to get refresh token from cookie first (new secure method)
+		refreshToken := GetRefreshToken(c)
+
+		// Fallback to JSON body for backward compatibility
+		if refreshToken == "" {
+			var req RefreshRequest
+			// Don't fail if no body - we might have cookie
+			_ = c.ShouldBindJSON(&req)
+			refreshToken = req.RefreshToken
+		}
+
+		if refreshToken == "" {
+			logger.WithField("request_id", requestID).Warn("No refresh token provided")
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": gin.H{
 					"code":       "invalid_request",
-					"message":    "Invalid request body",
+					"message":    "Missing refresh token",
 					"request_id": requestID,
 				},
 			})
@@ -56,7 +65,7 @@ func RefreshHandler(
 		}
 
 		// Validate refresh token
-		claims, err := jwtService.ValidateToken(req.RefreshToken)
+		claims, err := jwtService.ValidateToken(refreshToken)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
@@ -74,7 +83,7 @@ func RefreshHandler(
 
 		// Check if refresh token is blacklisted
 		ctx := context.Background()
-		blacklisted, err := redis.Get(ctx, "blacklist:"+req.RefreshToken).Result()
+		blacklisted, err := redis.Get(ctx, "blacklist:"+refreshToken).Result()
 		if err == nil && blacklisted == "1" {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
@@ -121,6 +130,9 @@ func RefreshHandler(
 			return
 		}
 
+		// Set new access token as HttpOnly cookie
+		SetAccessTokenCookie(c, accessToken)
+
 		// Audit log
 		logger.WithFields(logrus.Fields{
 			"request_id": requestID,
@@ -129,7 +141,7 @@ func RefreshHandler(
 		}).Info("Access token refreshed successfully")
 
 		c.JSON(http.StatusOK, RefreshResponse{
-			AccessToken: accessToken,
+			Success: true,
 		})
 	}
 }

@@ -13,15 +13,39 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Cookie name for access token (must match handlers/cookies.go)
+const accessTokenCookieName = "access_token"
+
+// getAccessTokenFromRequest extracts access token from cookie first, falls back to Authorization header
+// This enables gradual migration from header-based to cookie-based auth
+func getAccessTokenFromRequest(c *gin.Context) string {
+	// Try cookie first (new secure method)
+	if token, err := c.Cookie(accessTokenCookieName); err == nil && token != "" {
+		return token
+	}
+
+	// Fallback to Authorization header (legacy/backward compat)
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			return parts[1]
+		}
+	}
+
+	return ""
+}
+
 // AuthMiddleware validates JWT tokens and checks blacklist
+// Supports both cookie-based (new) and header-based (legacy) token retrieval
 func AuthMiddleware(jwtService *services.JWTService, redis *database.RedisClient, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
-		// Extract token from Authorization header
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			logger.WithField("request_id", requestID).Warn("Missing Authorization header")
+		// Get access token from cookie first, fallback to Authorization header
+		tokenString := getAccessTokenFromRequest(c)
+		if tokenString == "" {
+			logger.WithField("request_id", requestID).Warn("No access token provided")
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": gin.H{
 					"code":       "unauthorized",
@@ -32,23 +56,6 @@ func AuthMiddleware(jwtService *services.JWTService, redis *database.RedisClient
 			c.Abort()
 			return
 		}
-
-		// Check Bearer token format
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			logger.WithField("request_id", requestID).Warn("Invalid Authorization header format")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":       "unauthorized",
-					"message":    "Invalid authorization header format",
-					"request_id": requestID,
-				},
-			})
-			c.Abort()
-			return
-		}
-
-		tokenString := parts[1]
 
 		// Validate JWT token
 		claims, err := jwtService.ValidateToken(tokenString)

@@ -43,10 +43,10 @@ func TestLoginHandler_InvalidJSON(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	var response map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-	
+
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "invalid_request", errorObj["code"])
 }
@@ -54,7 +54,7 @@ func TestLoginHandler_InvalidJSON(t *testing.T) {
 func TestLoginHandler_MissingEmail(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	
+
 	body := `{"password": "somepassword"}`
 	c.Request = httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(body))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -80,7 +80,7 @@ func TestLoginHandler_MissingEmail(t *testing.T) {
 func TestLoginHandler_MissingPassword(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	
+
 	body := `{"email": "test@example.com"}`
 	c.Request = httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(body))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -106,7 +106,7 @@ func TestLoginHandler_MissingPassword(t *testing.T) {
 func TestLoginHandler_InvalidEmailFormat(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	
+
 	body := `{"email": "not-an-email", "password": "somepassword"}`
 	c.Request = httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(body))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -161,14 +161,14 @@ func TestLoginRequest_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
-			
+
 			body, _ := json.Marshal(tt.request)
 			c.Request = httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBuffer(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 
 			var req LoginRequest
 			err := c.ShouldBindJSON(&req)
-			
+
 			if tt.valid {
 				assert.NoError(t, err)
 			} else {
@@ -179,22 +179,22 @@ func TestLoginRequest_Validation(t *testing.T) {
 }
 
 // TestLoginResponse_Structure verifies the expected response structure
+// Note: Access and Refresh tokens are now sent as HttpOnly cookies, not in JSON body
 func TestLoginResponse_Structure(t *testing.T) {
 	resp := LoginResponse{
-		User:         map[string]interface{}{"id": "123", "email": "test@example.com"},
-		AccessToken:  "access-token-here",
-		RefreshToken: "refresh-token-here",
-		CSRFToken:    "csrf-token-here",
+		User:      map[string]interface{}{"id": "123", "email": "test@example.com"},
+		CSRFToken: "csrf-token-here",
 	}
-	
+
 	data, err := json.Marshal(resp)
 	require.NoError(t, err)
-	
+
 	var parsed map[string]interface{}
 	require.NoError(t, json.Unmarshal(data, &parsed))
-	
+
 	assert.Contains(t, parsed, "user")
-	assert.Contains(t, parsed, "access_token")
-	assert.Contains(t, parsed, "refresh_token")
 	assert.Contains(t, parsed, "csrf_token")
+	// Tokens are no longer in JSON response - they're in HttpOnly cookies
+	assert.NotContains(t, parsed, "access_token")
+	assert.NotContains(t, parsed, "refresh_token")
 }

@@ -313,9 +313,8 @@ export default function Files({ initialPath = '/' }) {
               try {
                 await fetch(`${window.location.origin}/api/v1/storage/trash/delete?path=${encodeURIComponent(item.name)}`, {
                   method: 'DELETE',
-                  credentials: 'include',
+                  credentials: 'include', // Auth cookie sent automatically
                   headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
                     'X-CSRF-Token': localStorage.getItem('csrfToken') || '',
                   },
                 });
