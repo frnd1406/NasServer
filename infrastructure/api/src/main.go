@@ -217,6 +217,16 @@ func main() {
 	blobStorageHandler := handlers.NewBlobStorageHandler(storageService, logger)
 	logger.Info("BlobStorageHandler initialized for chunked encrypted uploads")
 
+	// ==== PHASE 2: Performance Guard - Startup Benchmark ====
+	// Run crypto benchmark to measure system encryption speed
+	// This enables intelligent warnings for large file encryption
+	benchmarkService := services.NewBenchmarkService(logger)
+	go func() {
+		if err := benchmarkService.RunStartupBenchmark(); err != nil {
+			logger.WithError(err).Warn("Startup benchmark failed (non-fatal)")
+		}
+	}()
+
 	go func() {
 		if err := scheduler.StartBackupScheduler(backupService, cfg); err != nil {
 			logger.WithError(err).Error("Failed to start backup scheduler")
@@ -345,6 +355,9 @@ func main() {
 		v1.GET("/ask", handlers.AskHandler(db, cfg.AIServiceURL, cfg.OllamaURL, cfg.LLMModel, nil, logger))
 		v1.GET("/files/content", handlers.FileContentHandler(logger))
 
+		// ==== PHASE 2: System Capabilities (Performance Guard) ====
+		v1.GET("/system/capabilities", handlers.Capabilities(benchmarkService))
+
 		// AI Settings endpoints
 		v1.GET("/ai/status", handlers.AIStatusHandler(cfg.AIServiceURL, aiHTTPClient, logger))
 		v1.GET("/ai/settings", handlers.AISettingsGetHandler(logger))
@@ -419,6 +432,10 @@ func main() {
 		storageV1.GET("/files", handlers.StorageListHandler(storageService, logger))
 		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, honeyfileService, cfg, logger))
 		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, honeyfileService, logger))
+
+		// ==== PHASE 4: Smart Download (Hybrid Streaming) ====
+		// X-Accel-Redirect for unencrypted, streaming decrypt for encrypted
+		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, logger))
 		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
 		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
 		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, cfg, logger))
