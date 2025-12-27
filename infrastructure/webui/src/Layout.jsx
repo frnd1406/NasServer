@@ -85,11 +85,20 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
   const isSettingsPage = location.pathname === '/settings';
   const activeSettingsTab = searchParams.get('tab') || 'profile';
 
-  // Scroll effect for header
+  // Scroll effect and Event Listeners
   useEffect(() => {
+    // Scroll listener
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+
+    // Vault Locked Listener (Global Modal Trigger)
+    const handleLockedEvent = () => setShowVaultModal(true);
+    window.addEventListener('vault-locked', handleLockedEvent);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('vault-locked', handleLockedEvent);
+    };
   }, []);
 
   // Swipe handlers for sidebar
@@ -354,8 +363,8 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
               <button
                 onClick={() => setShowVaultModal(true)}
                 className={`relative p-2.5 rounded-full border transition-all ${isUnlocked
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20'
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                  : 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20'
                   }`}
                 title={`Vault Status: ${isUnlocked ? 'Unlocked' : 'Locked'}`}
               >
