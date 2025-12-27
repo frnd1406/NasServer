@@ -306,6 +306,11 @@ func serveEncryptedFile(
 		return
 	}
 
+	// Flush response to ensure client receives data immediately
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
 	logger.WithFields(logrus.Fields{
 		"request_id": requestID,
 		"filename":   filename,
@@ -396,8 +401,17 @@ func serveEncryptedRange(
 			"request_id":    requestID,
 			"error":         err.Error(),
 			"bytes_written": bytesWritten,
+			"range_start":   rangeStart,
+			"range_end":     rangeEnd,
+			"chunk_start":   rangeStart / 65536,
+			"chunk_end":     rangeEnd / 65536,
 		}).Error("Range decryption stream failed")
 		return
+	}
+
+	// Flush response to ensure client receives data immediately
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
 	}
 
 	logger.WithFields(logrus.Fields{
