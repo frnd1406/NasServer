@@ -156,7 +156,7 @@ func main() {
 			logger.Warn("⚠️  Vault persistence enabled: Keys survive restarts (security trade-off)")
 		}
 	}
-	encryptionService := services.NewEncryptionService(vaultPath)
+	encryptionService := services.NewEncryptionService(vaultPath, logger)
 	logger.WithField("vaultPath", vaultPath).Info("Encryption service initialized")
 
 	// Initialize encrypted storage service for /media/frnd14/DEMO

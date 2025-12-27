@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -151,14 +153,23 @@ type EncryptionService struct {
 	isUnlocked bool
 	dek        []byte // Data Encryption Key (only in RAM when unlocked)
 	mu         sync.RWMutex
+
+	// Anti-brute-force protection
+	failedUnlockAttempts int
+	unlockLockoutUntil   time.Time
+	logger               *logrus.Logger
 }
 
 // NewEncryptionService creates a new encryption service with the specified vault path
-func NewEncryptionService(vaultPath string) *EncryptionService {
+func NewEncryptionService(vaultPath string, logger *logrus.Logger) *EncryptionService {
+	if logger == nil {
+		logger = logrus.New()
+	}
 	return &EncryptionService{
 		vaultPath:  vaultPath,
 		isUnlocked: false,
 		dek:        nil,
+		logger:     logger,
 	}
 }
 
@@ -273,6 +284,16 @@ func (e *EncryptionService) Unlock(masterPassword string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// SECURITY: Rate limiting check (anti-brute-force)
+	if time.Now().Before(e.unlockLockoutUntil) {
+		e.logger.WithFields(logrus.Fields{
+			"event":           "vault_unlock_blocked",
+			"lockout_until":   e.unlockLockoutUntil,
+			"failed_attempts": e.failedUnlockAttempts,
+		}).Warn("🔒 Vault unlock blocked due to rate limit")
+		return ErrVaultLocked
+	}
+
 	if !e.IsConfiguredUnsafe() {
 		return ErrVaultNotSetup
 	}
@@ -301,12 +322,32 @@ func (e *EncryptionService) Unlock(masterPassword string) error {
 	// Decrypt DEK
 	dek, err := e.decryptWithKey(encryptedDEK, kek)
 	if err != nil {
+		// SECURITY: Track failed attempts and enforce lockout
+		e.failedUnlockAttempts++
+		e.logger.WithFields(logrus.Fields{
+			"event":          "vault_unlock_failed",
+			"attempt_count":  e.failedUnlockAttempts,
+			"total_attempts": e.failedUnlockAttempts,
+		}).Warn("⚠️  Vault unlock failed - invalid password")
+
+		if e.failedUnlockAttempts >= 5 {
+			e.unlockLockoutUntil = time.Now().Add(5 * time.Minute)
+			e.logger.WithFields(logrus.Fields{
+				"event":         "vault_lockout_activated",
+				"lockout_until": e.unlockLockoutUntil,
+				"reason":        "5 failed unlock attempts",
+			}).Error("🚨 SECURITY: Vault locked for 5 minutes after 5 failed attempts")
+		}
+
 		return ErrInvalidPassword
 	}
 
+	// SECURITY: Success - reset failure counter
+	e.failedUnlockAttempts = 0
 	e.dek = dek
 	e.isUnlocked = true
 
+	e.logger.Info("✅ Vault unlocked successfully")
 	return nil
 }
 
@@ -508,7 +549,8 @@ func DecryptStream(password string, input io.Reader, output io.Writer) error {
 		// Reuse plaintextBuf to avoid allocation
 		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
 		if err != nil {
-			return fmt.Errorf("%w: chunk %d authentication failed", ErrCorruptedData, chunkIndex)
+			// SECURITY: Return constant error to prevent timing leaks
+			return ErrCorruptedData
 		}
 
 		if _, err := output.Write(plaintextBuf); err != nil {
@@ -650,7 +692,8 @@ func DecryptStreamWithSeek(password string, input io.ReadSeeker, output io.Write
 		// Decrypt and authenticate the chunk
 		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
 		if err != nil {
-			return bytesWritten, fmt.Errorf("%w: chunk %d authentication failed", ErrCorruptedData, chunkIndex)
+			// SECURITY: Return constant error to prevent timing leaks
+			return bytesWritten, ErrCorruptedData
 		}
 
 		// For the first chunk, skip bytes up to the offset
@@ -1021,7 +1064,8 @@ func (sc *StreamCipher) DecryptStream(input io.Reader, output io.Writer) error {
 		deriveChunkNonceInPlace(baseNonce, chunkIndex, chunkNonce)
 		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
 		if err != nil {
-			return fmt.Errorf("%w: chunk %d authentication failed", ErrCorruptedData, chunkIndex)
+			// SECURITY: Return constant error to prevent timing leaks
+			return ErrCorruptedData
 		}
 
 		if _, err := output.Write(plaintextBuf); err != nil {
@@ -1225,7 +1269,8 @@ func DecryptChunk(password string, input io.ReaderAt, chunkIndex uint64, salt, b
 	// Decrypt and authenticate the chunk
 	plaintext, err := aead.Open(nil, chunkNonce, ciphertext[:n], nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: chunk %d authentication failed", ErrCorruptedData, chunkIndex)
+		// SECURITY: Return constant error to prevent timing leaks
+		return nil, ErrCorruptedData
 	}
 
 	return plaintext, nil

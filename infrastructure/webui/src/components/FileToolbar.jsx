@@ -9,7 +9,8 @@ import {
     List,
     Grid3x3,
     Trash,
-    Loader2
+    Loader2,
+    Shield
 } from 'lucide-react';
 
 export function FileToolbar({
@@ -47,8 +48,8 @@ export function FileToolbar({
                                     <button
                                         onClick={() => onNavigate(crumb.path)}
                                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${index === breadcrumbs.length - 1
-                                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10'
+                                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                            : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10'
                                             }`}
                                     >
                                         {crumb.name}
@@ -64,6 +65,14 @@ export function FileToolbar({
 
                 {/* Right: Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
+                    {/* Policy Indicator */}
+                    <div className="mr-2 group relative flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 cursor-help">
+                        <Shield size={16} />
+                        <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 p-2 bg-slate-900 border border-white/10 rounded-lg text-xs text-slate-300 shadow-xl z-10 text-center">
+                            Encryption managed by System Policies
+                        </div>
+                    </div>
+
                     {/* Upload Button */}
                     <button
                         onClick={onUploadClick}

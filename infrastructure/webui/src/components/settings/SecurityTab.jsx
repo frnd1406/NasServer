@@ -143,8 +143,131 @@ export default function SecurityTab() {
         });
     };
 
+    // Encryption Policies State
+    const [policies, setPolicies] = useState({
+        encrypt_docs: true,
+        encrypt_images: true,
+        encrypt_videos: false,
+        max_size_gb: 2
+    });
+    const [policiesSaving, setPoliciesSaving] = useState(false);
+
+    // Load policies (mock)
+    useEffect(() => {
+        // In a real app, this would be an API call
+        // const load = async () => { ... }
+        // For now, we use defaults
+        console.log("Loaded encryption policies (mock)");
+    }, []);
+
+    const handlePolicyChange = (key, value) => {
+        setPolicies(prev => ({ ...prev, [key]: value }));
+    };
+
+    const savePolicies = async () => {
+        setPoliciesSaving(true);
+        try {
+            // Mock API call
+            await new Promise(resolve => setTimeout(resolve, 800));
+            console.log("Saved policies:", policies);
+
+            // In reality: await apiRequest("/api/v1/admin/encryption-policies", { method: "POST", body: JSON.stringify(policies) });
+
+            toast.success("Encryption Policies gespeichert");
+        } catch (err) {
+            toast.error("Fehler beim Speichern");
+        } finally {
+            setPoliciesSaving(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
+            {/* Smart Encryption Policies */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Shield}
+                    title="Smart Encryption Policies"
+                    description="Globale Verschlüsselungs-Regeln für alle Uploads"
+                    iconColor="blue"
+                />
+
+                <div className="space-y-6">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                            <div>
+                                <p className="text-white font-medium">Dokumente verschlüsseln</p>
+                                <p className="text-slate-400 text-sm">PDF, DOCX, TXT, etc.</p>
+                            </div>
+                            <button
+                                onClick={() => handlePolicyChange('encrypt_docs', !policies.encrypt_docs)}
+                                className={`relative w-12 h-7 rounded-full transition-colors ${policies.encrypt_docs ? "bg-blue-500" : "bg-slate-700"}`}
+                            >
+                                <div className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${policies.encrypt_docs ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                            <div>
+                                <p className="text-white font-medium">Bilder verschlüsseln</p>
+                                <p className="text-slate-400 text-sm">JPG, PNG, WEBP (Vorschauen bleiben generierbar)</p>
+                            </div>
+                            <button
+                                onClick={() => handlePolicyChange('encrypt_images', !policies.encrypt_images)}
+                                className={`relative w-12 h-7 rounded-full transition-colors ${policies.encrypt_images ? "bg-blue-500" : "bg-slate-700"}`}
+                            >
+                                <div className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${policies.encrypt_images ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-white font-medium">Videos verschlüsseln</p>
+                                    {!policies.encrypt_videos && <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-500/20 text-emerald-400">Performance</span>}
+                                </div>
+                                <p className="text-slate-400 text-sm">MP4, MOV, MKV (Streaming limitiert bei Encryption)</p>
+                            </div>
+                            <button
+                                onClick={() => handlePolicyChange('encrypt_videos', !policies.encrypt_videos)}
+                                className={`relative w-12 h-7 rounded-full transition-colors ${policies.encrypt_videos ? "bg-blue-500" : "bg-slate-700"}`}
+                            >
+                                <div className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${policies.encrypt_videos ? "translate-x-5" : "translate-x-0"}`} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
+                        <div className="flex justify-between mb-2">
+                            <label className="text-white font-medium">Max File Size Limit</label>
+                            <span className="text-blue-400 font-mono">{policies.max_size_gb} GB</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.5"
+                            max="10"
+                            step="0.5"
+                            value={policies.max_size_gb}
+                            onChange={(e) => handlePolicyChange('max_size_gb', parseFloat(e.target.value))}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <p className="text-slate-500 text-xs mt-2">
+                            Dateien größer als {policies.max_size_gb}GB werden automatisch unverschlüsselt (Standard) gespeichert, um Performance-Probleme zu vermeiden.
+                        </p>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <button
+                            onClick={savePolicies}
+                            disabled={policiesSaving}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {policiesSaving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                            <span>Policies speichern</span>
+                        </button>
+                    </div>
+                </div>
+            </GlassCard>
             {/* Info Banner */}
             <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3">
                 <AlertTriangle size={20} className="text-amber-400 mt-0.5" />

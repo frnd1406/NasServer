@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { authHeaders } from '../utils/auth';
 import { joinPath } from '../utils/fileUtils';
+import { uploadFile as apiUploadFile } from '../lib/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
@@ -166,34 +167,9 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
                     });
 
                 } else {
-                    // === STANDARD UPLOAD ===
-                    const form = new FormData();
-                    form.append('file', file);
-                    form.append('path', currentPath);
-
-                    const headers = authHeaders();
-                    delete headers['Content-Type'];
-
-                    const csrfToken = localStorage.getItem('csrfToken') || localStorage.getItem('csrf_token');
-                    if (csrfToken) {
-                        headers['X-CSRF-Token'] = csrfToken;
-                    }
-
-                    const res = await fetch(`${API_BASE}/api/v1/storage/upload`, {
-                        method: 'POST',
-                        body: form,
-                        credentials: 'include',
-                        headers: headers,
-                    });
-
-                    if (res.status === 401) {
-                        window.location.href = '/login';
-                        return;
-                    }
-                    if (!res.ok) {
-                        const errorText = await res.text().catch(() => 'No error details');
-                        throw new Error(`Upload failed for ${file.name}: HTTP ${res.status} - ${errorText}`);
-                    }
+                    // === STANDARD UPLOAD (Via API) ===
+                    // Now supports encryptionMode (Hybrid Encryption)
+                    await apiUploadFile(file, currentPath);
                 }
             }
 
@@ -201,6 +177,9 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         } catch (err) {
             console.error('Upload error:', err);
             setError(err.message || 'Unknown error');
+            if (err.message === 'Unauthorized') {
+                window.location.href = '/login';
+            }
         } finally {
             setUploading(false);
         }

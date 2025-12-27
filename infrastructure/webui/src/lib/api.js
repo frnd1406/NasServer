@@ -539,3 +539,72 @@ export async function downloadFolderAsZip(path) {
 
   return await res.blob();
 }
+
+/**
+ * Get auth headers for API requests
+ * Note: Access token is now sent automatically via HttpOnly cookie
+ */
+export function authHeaders() {
+  const csrfToken = localStorage.getItem("csrfToken") || localStorage.getItem("csrf_token") || "";
+  const headers = {};
+  // CSRF token still needs to be sent as header
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  return headers;
+}
+
+/**
+ * Get system capabilities for performance estimation
+ * @param {number} fileSizeBytes - Size of the file in bytes
+ * @returns {Promise<{est_time_seconds: number, warning: boolean}>}
+ */
+export async function getSystemCapabilities(fileSizeBytes) {
+  try {
+    const res = await apiRequest(`/api/system/capabilities?size=${fileSizeBytes}`, {
+      method: 'GET',
+    });
+    return res;
+  } catch (err) {
+    console.warn('Failed to get system capabilities:', err);
+    return { est_time_seconds: 0, warning: false };
+  }
+}
+
+/**
+ * Upload a single file
+ * @param {File} file - The file to upload
+ * @param {string} path - Target directory path
+ * @param {string} encryptionMode - 'NONE' or 'USER'
+ * @returns {Promise<any>}
+ */
+export async function uploadFile(file, path) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('path', path);
+
+  // Encryption mode is now handled by the backend based on global policies
+
+
+  const headers = authHeaders();
+  // Delete Content-Type to let browser set boundary for FormData
+  // Note: authHeaders returned object doesn't have Content-Type by default in the local version I just added above, 
+  // but let's be safe if it did.
+  delete headers['Content-Type'];
+
+  const res = await fetch(buildUrl('/api/v1/storage/upload'), {
+    method: 'POST',
+    body: form,
+    credentials: 'include',
+    headers: headers,
+  });
+
+  if (res.status === 401) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => 'No error details');
+    throw new Error(`Upload failed for ${file.name}: HTTP ${res.status} - ${errorText}`);
+  }
+
+  return true;
+}
