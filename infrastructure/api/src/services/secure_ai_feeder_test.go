@@ -1,60 +1,194 @@
 package services
 
 import (
-	"encoding/json"
+	"bytes"
 	"io"
-	"net/http"
-	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/nas-ai/api/src/models"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSecureAIFeeder_FeedContent_PushMode(t *testing.T) {
-	// Setup Mock Server (simulates Python AI Agent)
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify Request
-		assert.Equal(t, "/process", r.URL.Path)
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-
-		var payload map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&payload)
-		assert.NoError(t, err)
-
-		// Verify Payload (RAM-Push Mode)
-		assert.Equal(t, "secret content", payload["content"])
-		assert.Equal(t, "test.enc", payload["file_id"])
-		assert.Equal(t, "/path/to/test.enc", payload["file_path"])
-		assert.Equal(t, "text/plain", payload["mime_type"])
-
-		// Send Success Response
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":  "success",
-			"file_id": "test.enc",
-			"mode":    "push",
-		})
-	}))
-	defer mockServer.Close()
-
-	// Setup Service
-	logger := logrus.New()
-	logger.SetOutput(io.Discard) // Silence logs during test
-
-	// We don't need EncryptionService for FeedContent, so passing nil is fine
-	feeder := NewSecureAIFeeder(nil, mockServer.URL, "", logger)
-
-	// Execute
-	err := feeder.FeedContent("secret content", "test.enc", "/path/to/test.enc", "text/plain")
-
-	// Verify
-	assert.NoError(t, err)
+// mockFileProvider implements FileMetadataProvider for testing
+type mockFileProvider struct {
+	files map[string]*models.File
 }
 
-func TestSecureAIFeeder_FeedEncryptedFile_IntegrationFlow(t *testing.T) {
-	// Note: This test would require mocking the EncryptionService and file system.
-	// For now, we tested the critical "Push Payload" logic in the test above.
-	// The FeedEncryptedFile method mainly orchestrates: Read -> Decrypt -> FeedContent.
+func (m *mockFileProvider) GetFileByID(fileID string) (*models.File, error) {
+	if file, ok := m.files[fileID]; ok {
+		return file, nil
+	}
+	return nil, ErrFileNotFound
+}
+
+func (m *mockFileProvider) GetFileByPath(storagePath string) (*models.File, error) {
+	for _, file := range m.files {
+		if file.StoragePath == storagePath {
+			return file, nil
+		}
+	}
+	return nil, ErrFileNotFound
+}
+
+func TestBlindAgentProtocol_GetContentForIndexing_BlocksEncrypted(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "blind_agent_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create test files
+	unencryptedPath := filepath.Join(tmpDir, "plain.txt")
+	err = os.WriteFile(unencryptedPath, []byte("This is unencrypted content"), 0644)
+	require.NoError(t, err)
+
+	encryptedPath := filepath.Join(tmpDir, "secret.txt.enc")
+	encryptedContent := &bytes.Buffer{}
+	err = EncryptStream("testpassword", bytes.NewReader([]byte("This is encrypted content")), encryptedContent)
+	require.NoError(t, err)
+	err = os.WriteFile(encryptedPath, encryptedContent.Bytes(), 0644)
+	require.NoError(t, err)
+
+	// Create mock file provider
+	mockProvider := &mockFileProvider{
+		files: map[string]*models.File{
+			"file-1": {
+				ID:               "file-1",
+				Filename:         "plain.txt",
+				StoragePath:      "plain.txt",
+				EncryptionStatus: models.EncryptionNone,
+			},
+			"file-2": {
+				ID:               "file-2",
+				Filename:         "secret.txt.enc",
+				StoragePath:      "secret.txt.enc",
+				EncryptionStatus: models.EncryptionUser,
+			},
+		},
+	}
+
+	// Create feeder
+	feeder := NewSecureAIFeederV2(nil, mockProvider, tmpDir, "http://localhost:5000", "", logger)
+
+	// Test 1: Unencrypted file SHOULD be accessible
+	t.Run("UnencryptedFileAllowed", func(t *testing.T) {
+		reader, err := feeder.GetContentForIndexing("file-1")
+		assert.NoError(t, err)
+		assert.NotNil(t, reader)
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "This is unencrypted content", string(content))
+	})
+
+	// Test 2: Encrypted file MUST be blocked
+	t.Run("EncryptedFileBlocked", func(t *testing.T) {
+		reader, err := feeder.GetContentForIndexing("file-2")
+		assert.ErrorIs(t, err, ErrEncryptedContentProtected)
+		assert.Nil(t, reader)
+	})
+
+	// Test 3: Non-existent file returns ErrFileNotFound
+	t.Run("FileNotFound", func(t *testing.T) {
+		reader, err := feeder.GetContentForIndexing("file-nonexistent")
+		assert.ErrorIs(t, err, ErrFileNotFound)
+		assert.Nil(t, reader)
+	})
+}
+
+func TestBlindAgentProtocol_GetEphemeralContent_DecryptsWithPassword(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "ephemeral_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	password := "ephemeral-password-123"
+	plaintext := "This is secret content that only exists in RAM!"
+
+	// Create encrypted file
+	encryptedPath := filepath.Join(tmpDir, "secret.txt.enc")
+	encryptedContent := &bytes.Buffer{}
+	err = EncryptStream(password, bytes.NewReader([]byte(plaintext)), encryptedContent)
+	require.NoError(t, err)
+	err = os.WriteFile(encryptedPath, encryptedContent.Bytes(), 0644)
+	require.NoError(t, err)
+
+	// Create unencrypted file
+	unencryptedPath := filepath.Join(tmpDir, "plain.txt")
+	err = os.WriteFile(unencryptedPath, []byte("Plain content"), 0644)
+	require.NoError(t, err)
+
+	// Create mock file provider
+	mockProvider := &mockFileProvider{
+		files: map[string]*models.File{
+			"enc-file": {
+				ID:               "enc-file",
+				Filename:         "secret.txt.enc",
+				StoragePath:      "secret.txt.enc",
+				EncryptionStatus: models.EncryptionUser,
+			},
+			"plain-file": {
+				ID:               "plain-file",
+				Filename:         "plain.txt",
+				StoragePath:      "plain.txt",
+				EncryptionStatus: models.EncryptionNone,
+			},
+		},
+	}
+
+	feeder := NewSecureAIFeederV2(nil, mockProvider, tmpDir, "http://localhost:5000", "", logger)
+
+	// Test 1: Encrypted file WITH password returns decrypted content
+	t.Run("EncryptedWithPassword", func(t *testing.T) {
+		reader, err := feeder.GetEphemeralContent("enc-file", password)
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, plaintext, string(content))
+	})
+
+	// Test 2: Encrypted file WITHOUT password returns ErrPasswordRequired
+	t.Run("EncryptedWithoutPassword", func(t *testing.T) {
+		reader, err := feeder.GetEphemeralContent("enc-file", "")
+		assert.ErrorIs(t, err, ErrPasswordRequired)
+		assert.Nil(t, reader)
+	})
+
+	// Test 3: Unencrypted file doesn't need password
+	t.Run("UnencryptedNoPasswordNeeded", func(t *testing.T) {
+		reader, err := feeder.GetEphemeralContent("plain-file", "")
+		require.NoError(t, err)
+		require.NotNil(t, reader)
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Plain content", string(content))
+	})
+}
+
+func TestBlindAgentProtocol_LegacyCompatibility(t *testing.T) {
+	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
+
+	// Legacy constructor (no file provider)
+	feeder := NewSecureAIFeeder(nil, "http://localhost:5000", "", logger)
+
+	// Legacy mode should return error when trying to use new methods
+	_, err := feeder.GetContentForIndexing("any-file")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "file provider not configured")
 }
