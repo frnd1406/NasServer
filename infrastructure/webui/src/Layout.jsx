@@ -9,6 +9,7 @@ import {
   Settings,
   LogOut,
   Lock,
+  Unlock,
   Search,
   Bell,
   CloudLightning,
@@ -31,6 +32,8 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useSwipe } from "./hooks/useSwipe";
+import { useVault } from "./context/VaultContext";
+import { VaultModal } from "./components/Vault/VaultModal";
 
 // SidebarItem Component for reusable navigation items
 const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
@@ -62,6 +65,21 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
   const { accessToken } = getAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  // Vault Global State
+  const { isUnlocked, unlock, setup } = useVault();
+  const [showVaultModal, setShowVaultModal] = useState(false);
+
+  // Vault Handlers
+  const handleVaultUnlock = async (password) => {
+    await unlock(password);
+    setShowVaultModal(false);
+  };
+
+  const handleVaultSetup = async (data) => {
+    await setup(data);
+    setShowVaultModal(false);
+  };
 
   // Check if we're on settings page
   const isSettingsPage = location.pathname === '/settings';
@@ -331,6 +349,19 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
                   }}
                 />
               </div>
+
+              {/* Vault Indicator */}
+              <button
+                onClick={() => setShowVaultModal(true)}
+                className={`relative p-2.5 rounded-full border transition-all ${isUnlocked
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                  }`}
+                title={isUnlocked ? "Vault Unlocked" : "Vault Locked"}
+              >
+                {isUnlocked ? <Unlock size={20} /> : <Lock size={20} />}
+              </button>
+
               <button className="relative p-2.5 rounded-full bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-colors">
                 <Bell size={20} />
                 <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.6)]"></span>
@@ -345,6 +376,14 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
           </div>
         </main>
       </div>
+
+      {/* Global Vault Modal */}
+      <VaultModal
+        isOpen={showVaultModal}
+        onClose={() => setShowVaultModal(false)}
+        onUnlock={handleVaultUnlock}
+        onSetup={handleVaultSetup}
+      />
     </div>
   );
 }

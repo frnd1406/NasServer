@@ -23,13 +23,11 @@ import { NewFolderModal } from '../components/NewFolderModal';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { ContextMenu } from '../components/ContextMenu';
 
-import { VaultModal } from '../components/Vault/VaultModal';
 import { useVault } from '../context/VaultContext';
 
 export default function Files({ initialPath = '/' }) {
   // Vault context
   const { isUnlocked, unlock, setup, vaultConfig, key } = useVault();
-  const [showVaultModal, setShowVaultModal] = useState(false);
 
   // File storage operations hook
   const {
@@ -55,25 +53,16 @@ export default function Files({ initialPath = '/' }) {
   } = useFileStorage(initialPath, isUnlocked ? key : null);
 
   // Check vault access
+  // Check vault access - removed as handled globally now
+  /*
   useEffect(() => {
     if (path.startsWith('vault') || path.startsWith('/vault')) {
       if (!isUnlocked) {
-        setShowVaultModal(true);
+        // setShowVaultModal(true); // Handled globally via header button or interceptor if we added one
       }
     }
   }, [path, isUnlocked]);
-
-  const handleVaultUnlock = async (password) => {
-    await unlock(password);
-    setShowVaultModal(false);
-    loadFiles(path); // Reload files now that we have keys (if we were using listing API that needed keys, but we are using raw listing. However, maybe we trigger re-decryption?)
-  };
-
-  const handleVaultSetup = async (data) => {
-    await setup(data);
-    setShowVaultModal(false);
-    loadFiles(path);
-  };
+  */
 
 
   // File preview hook
@@ -253,23 +242,6 @@ export default function Files({ initialPath = '/' }) {
         className="hidden"
       />
 
-      {/* Vault Modal */}
-      <VaultModal
-        isOpen={showVaultModal}
-        onClose={() => {
-          // If closed without unlocking, redirect to root?
-          // setShowVaultModal(false);
-          // navigateTo('/');
-          // For now just close, but content remains hidden/locked via logic if I implement it
-          // Actually, if we don't unlock, we should probably not show list?
-          // The file list of /vault contains encrypted blobs. It's safe to show filenames if they are random.
-          // But usually we want to obscure them.
-          // Let's keep it simple: modal blocking interaction.
-          setShowVaultModal(false);
-        }}
-        onUnlock={handleVaultUnlock}
-        onSetup={handleVaultSetup}
-      />
 
       {/* New Folder Modal */}
       <NewFolderModal
