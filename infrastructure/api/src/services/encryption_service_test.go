@@ -208,7 +208,7 @@ func TestVaultSetupUnlock(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	vaultPath := filepath.Join(tempDir, "vault")
-	service := NewEncryptionService(vaultPath)
+	service := NewEncryptionService(vaultPath, nil)
 
 	// Initially not configured
 	if service.IsConfigured() {
