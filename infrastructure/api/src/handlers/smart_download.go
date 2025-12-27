@@ -49,12 +49,16 @@ type DownloadRequest struct {
 //   - path: Required. Relative path to file
 //   - password: Required for encrypted files. Decryption password
 //   - inline: Optional. If "true", use inline Content-Disposition
+//   - mode: Optional. "raw" or "auto" (default: "auto")
+//   - raw: Stream ciphertext as-is (for offline decryption)
+//   - auto: Decrypt if vault unlocked, return 423 if locked
 //
 // Headers:
 //   - Range: Optional. Byte range for partial content (video seeking)
 func SmartDownloadHandler(
 	storage *services.StorageService,
 	honeySvc *services.HoneyfileService,
+	encryptionSvc *services.EncryptionService,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -69,6 +73,10 @@ func SmartDownloadHandler(
 		// Parse optional parameters
 		password := c.Query("password")
 		inline := c.Query("inline") == "true"
+		mode := c.Query("mode")
+		if mode == "" {
+			mode = "auto" // Default: auto-decrypt if possible
+		}
 
 		// Get full filesystem path
 		fullPath, err := storage.GetFullPath(path)
@@ -128,8 +136,40 @@ func SmartDownloadHandler(
 			serveUnencryptedFile(c, fullPath, fileInfo, inline, logger, requestID)
 
 		case models.EncryptionUser:
-			// Secure Path: Streaming decryption
+		// ==== USER ENCRYPTION: Check mode parameter ====
+		
+		// Mode: raw - Serve ciphertext as-is (for offline decryption)
+		if mode == "raw" {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"path":       path,
+				"mode":       "raw",
+			}).Debug("Serving encrypted file as raw ciphertext")
+			serveRawFile(c, fullPath, fileInfo, inline, logger, requestID)
+			return
+		}
+		
+		// Mode: auto - Decrypt if possible
+			
 			if password == "" {
+			// No password provided - check if vault is unlocked
+			if encryptionSvc != nil && !encryptionSvc.IsUnlocked() {
+				logger.WithFields(logrus.Fields{
+					"request_id":        requestID,
+					"path":              path,
+					"encryption_status": "USER",
+				}).Warn("🔒 Download blocked - vault is locked and no password provided")
+				
+				c.JSON(http.StatusLocked, gin.H{
+					"error":             "Vault is locked. Cannot decrypt file without password.",
+					"encryption_status": "USER",
+					"hint":              "Provide ?password=... or unlock vault first",
+					"alternative":       "Use ?mode=raw to download encrypted file",
+				})
+				return
+			}
+			
+			// Vault is unlocked but no password - still require password for USER files
 				c.JSON(http.StatusBadRequest, gin.H{
 					"error":             "password required for encrypted file",
 					"encryption_status": "USER",
@@ -578,4 +618,54 @@ func detectContentType(fullPath, filename string) string {
 	}
 
 	return "application/octet-stream"
+}
+
+// serveRawFile serves an encrypted file as raw ciphertext (no decryption)
+// This allows users to download the encrypted file for offline decryption
+func serveRawFile(
+c *gin.Context,
+fullPath string,
+fileInfo os.FileInfo,
+inline bool,
+logger *logrus.Logger,
+requestID string,
+) {
+filename := fileInfo.Name()
+contentType := "application/octet-stream" // Always binary for ciphertext
+
+// Set Content-Disposition
+disposition := "attachment"
+if inline {
+disposition = "inline"
+}
+c.Header("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, filename))
+c.Header("Content-Type", contentType)
+c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+
+// Serve raw file (ciphertext)
+file, err := os.Open(fullPath)
+if err != nil {
+logger.WithError(err).Error("Failed to open encrypted file for raw delivery")
+c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to open file"})
+return
+}
+defer file.Close()
+
+c.Status(http.StatusOK)
+
+// Stream raw ciphertext directly
+_, err = io.Copy(c.Writer, file)
+if err != nil {
+logger.WithFields(logrus.Fields{
+"request_id": requestID,
+"error":      err.Error(),
+}).Error("Raw file streaming failed")
+return
+}
+
+logger.WithFields(logrus.Fields{
+"request_id": requestID,
+"filename":   filename,
+"mode":       "raw",
+}).Info("Encrypted file served as raw ciphertext")
 }

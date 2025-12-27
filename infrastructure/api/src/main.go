@@ -439,7 +439,7 @@ func main() {
 
 		// ==== PHASE 4: Smart Download (Hybrid Streaming) ====
 		// X-Accel-Redirect for unencrypted, streaming decrypt for encrypted
-		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, logger))
+		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, encryptionService, logger))
 		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
 		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
 		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, cfg, logger))
