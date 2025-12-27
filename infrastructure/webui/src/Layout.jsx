@@ -354,10 +354,10 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
               <button
                 onClick={() => setShowVaultModal(true)}
                 className={`relative p-2.5 rounded-full border transition-all ${isUnlocked
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                    : 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20'
                   }`}
-                title={isUnlocked ? "Vault Unlocked" : "Vault Locked"}
+                title={`Vault Status: ${isUnlocked ? 'Unlocked' : 'Locked'}`}
               >
                 {isUnlocked ? <Unlock size={20} /> : <Lock size={20} />}
               </button>
