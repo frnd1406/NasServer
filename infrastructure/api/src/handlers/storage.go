@@ -239,43 +239,36 @@ func StorageListHandler(storage *services.StorageService, logger *logrus.Logger)
 	}
 }
 
-func StorageUploadHandler(storage *services.StorageService, honeySvc *services.HoneyfileService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadHandler(storage *services.StorageService, policyService *services.EncryptionPolicyService, honeySvc *services.HoneyfileService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
 
-		// ==== PHASE 3: Hybrid Encryption Support ====
-		// Read encryption parameters from form
-		encryptionModeStr := c.PostForm("encryption_mode")      // NONE, SYSTEM, USER
+		// ==== PHASE 3B: Hybrid Encryption with Policy Support ====
+		// Read encryption override from form (AUTO, FORCE_USER, FORCE_NONE)
+		encryptionOverride := c.PostForm("encryption_override")
 		encryptionPassword := c.PostForm("encryption_password") // Required for USER mode
 
-		// Default to NONE if not specified (backward compatibility)
-		var encryptionMode models.EncryptionMode
-		switch strings.ToUpper(encryptionModeStr) {
-		case "USER":
-			encryptionMode = models.EncryptionUser
-		case "SYSTEM":
-			encryptionMode = models.EncryptionSystem
-		case "NONE", "":
-			encryptionMode = models.EncryptionNone
-		default:
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "invalid encryption_mode: must be NONE, SYSTEM, or USER",
-			})
+		// Get file header first to determine encryption mode
+		fileHeader, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 			return
 		}
+
+		// Use policy service to determine encryption mode intelligently
+		encryptionMode := policyService.DetermineMode(
+			fileHeader.Filename,
+			fileHeader.Size,
+			encryptionOverride,
+		)
 
 		// Validate USER mode has password
 		if encryptionMode == models.EncryptionUser && encryptionPassword == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "encryption_password is required when encryption_mode is USER",
+				"error": "encryption_password is required when file will be encrypted",
+				"hint":  "This file type or override requires encryption",
 			})
-			return
-		}
-
-		fileHeader, err := c.FormFile("file")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 			return
 		}
 

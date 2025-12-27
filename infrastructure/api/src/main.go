@@ -201,6 +201,10 @@ func main() {
 	honeyfileService := services.NewHoneyfileService(honeyfileRepo, encryptionService, logger)
 	logger.Info("HoneyfileService initialized for intrusion detection")
 
+	// Initialize EncryptionPolicyService for smart encryption decisions
+	encryptionPolicyService := services.NewEncryptionPolicyService()
+	logger.Info("EncryptionPolicyService initialized for hybrid upload pipeline")
+
 	// Phase 8: Dead Man's Switch (Alerting)
 	alertService := services.NewAlertService(emailService, cfg, logger)
 	// Start background alert ticker (every 5 minutes)
@@ -430,7 +434,7 @@ func main() {
 	)
 	{
 		storageV1.GET("/files", handlers.StorageListHandler(storageService, logger))
-		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, honeyfileService, cfg, logger))
+		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, encryptionPolicyService, honeyfileService, cfg, logger))
 		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, honeyfileService, logger))
 
 		// ==== PHASE 4: Smart Download (Hybrid Streaming) ====
