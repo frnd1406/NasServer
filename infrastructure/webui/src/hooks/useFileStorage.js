@@ -20,8 +20,6 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
 
     // Load files from a directory
     const loadFiles = useCallback(async (target = path) => {
-        // Check if user might be logged in (CSRF token exists)
-        // Note: Access token is now in HttpOnly cookie, can't check directly
         const csrfToken = localStorage.getItem('csrfToken') || localStorage.getItem('csrf_token');
         if (!csrfToken) {
             setError('Bitte zuerst einloggen.');
@@ -88,66 +86,30 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
                 const file = filesToUpload[i];
                 console.log(`Uploading file ${i + 1}/${filesToUpload.length}:`, file.name);
 
-                // CHECK: Is this a vault upload?
-                // We define vault upload if currentPath starts with "vault" or "/vault" AND we have a key
                 const isVault = (currentPath.startsWith('vault') || currentPath.startsWith('/vault')) && vaultKey;
 
                 if (isVault) {
-                    // === ENCRYPTED CHUNKED UPLOAD ===
                     if (!vaultKey) throw new Error("Vault locked: Cannot upload");
 
-                    // 1. Init Upload
-                    const iv = generateIV(); // Unique IV per file
-                    // We need to store IV. Usually prepend to file? Or separate metadata.
-                    // Simple approach: Prepend 12 bytes IV to the first chunk.
-                    // The backend just sees "data".
-
-                    // Init backend session
-                    // Filename must end in .enc
                     const encFilename = file.name + ".enc";
                     const initRes = await fetch(`${API_BASE}/api/v1/vault/upload/init`, {
                         method: 'POST',
                         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename: encFilename, total_size: file.size }) // Size is aprox, actually encrypted size is slightly larger + IV
+                        body: JSON.stringify({ filename: encFilename, total_size: file.size })
                     });
 
                     if (!initRes.ok) throw new Error("Vault upload init failed");
                     const { upload_id } = await initRes.json();
 
-                    // 2. Upload Chunks
                     let chunkIndex = 0;
                     for await (const chunkCtx of fileChunkIterator(file)) {
-                        // Encrypt chunk
-                        // deriveKey is expensive, we rely on cached `vaultKey` (CryptoKey)
-
-                        // If first chunk, we should prepend IV?
-                        // Actually, AES-GCM needs IV for decryption.
-                        // Strategy: The IV is static for the file? Or random?
-                        // If random IV per chunk -> we need to store IVs.
-                        // If static IV per file -> we reuse IV? (Insecure if same key+IV used for different data blocks? yes)
-                        // AES-GCM is tricky with streaming.
-                        // Usually: Encrypt file as one stream? WebCrypto doesn't support streaming encryption easily.
-                        // We must encrypt CHUNKS. Each chunk needs its own IV or counter?
-                        // "True Zero Knowledge" with large files usually implies:
-                        // 1. Generate random FILE KEY.
-                        // 2. Encrypt FILE KEY with Vault Key (Key Wrapping).
-                        // 3. Encrypt chunks with FILE KEY + Counter (or unique IVs).
-
-                        // SIMPLIFICATION for this prototype:
-                        // We use the SAME IV for the whole file? NO, catastrophic.
-                        // We generate a unique IV for EACH chunk?
-                        // Then we need to store the IV with the chunk.
-                        // Output format: [IV 12b][Ciphertext][Tag] ... [IV 12b][Ciphertext][Tag] (Tag is inclusive in ciphertext usually in WebCrypto)
-
                         const chunkIV = generateIV();
                         const encryptedBuffer = await encryptChunk(chunkCtx.data, vaultKey, chunkIV);
 
-                        // Append IV to start of buffer
                         const combined = new Uint8Array(chunkIV.length + encryptedBuffer.byteLength);
                         combined.set(chunkIV);
                         combined.set(new Uint8Array(encryptedBuffer), chunkIV.length);
 
-                        // Upload
                         const chunkRes = await fetch(`${API_BASE}/api/v1/vault/upload/chunk/${upload_id}`, {
                             method: 'POST',
                             headers: {
@@ -161,16 +123,13 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
                         chunkIndex++;
                     }
 
-                    // 3. Finalize
                     await fetch(`${API_BASE}/api/v1/vault/upload/finalize/${upload_id}`, {
                         method: 'POST',
                         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path: 'vault' }) // Force into vault dir
+                        body: JSON.stringify({ path: 'vault' })
                     });
 
                 } else {
-                    // === STANDARD UPLOAD (Via API) ===
-                    // Pass encryption mode override to API
                     await apiUploadFile(file, currentPath, encryptionMode);
                 }
             }
@@ -214,7 +173,7 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         }
     }, []);
 
-    // Delete file
+    // Delete file (Move to Trash)
     const deleteFile = useCallback(async (item, currentPath) => {
         if (item.name === '.trash') {
             setError('Der Papierkorb kann nicht gelöscht werden');
@@ -243,6 +202,43 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
             setError(err.message);
         }
     }, [loadFiles, loadTrash]);
+
+    // Permanently delete file from Trash
+    const deleteFromTrash = useCallback(async (item) => {
+        try {
+            const res = await fetch(
+                `${API_BASE}/api/v1/storage/trash/delete?path=${encodeURIComponent(item.name)}`,
+                {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: authHeaders(),
+                }
+            );
+            if (!res.ok) {
+                console.error(`Failed to delete ${item.name} from trash:`, res.status);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.error(`Failed to delete ${item.name} from trash:`, err);
+            return false;
+        }
+    }, []);
+
+    // Empty Trash
+    const emptyTrash = useCallback(async () => {
+        if (!window.confirm('Papierkorb endgültig leeren? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+
+        try {
+            // Optimistic approach: Run all deletes in parallel
+            const deletePromises = trashedFiles.map(item => deleteFromTrash(item));
+            await Promise.all(deletePromises);
+
+            await loadTrash();
+        } catch (err) {
+            setError('Fehler beim Leeren des Papierkorbs');
+        }
+    }, [trashedFiles, deleteFromTrash, loadTrash]);
 
     // Restore file from trash
     const restoreFile = useCallback(async (item, currentPath) => {
@@ -479,6 +475,8 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         uploadFiles,
         downloadFile,
         deleteFile,
+        deleteFromTrash,
+        emptyTrash,
         restoreFile,
         renameFile,
         createFolder,
@@ -492,4 +490,3 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         moveFile,
     };
 }
-

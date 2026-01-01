@@ -1,7 +1,6 @@
-// Files page - With multi-select, batch operations, and search filter
-
+// Files page - Cleaned up and refactored
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { Loader2, Search, X, Download, Trash2, CheckSquare, Square } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 // Hooks
 import { useFileStorage } from '../hooks/useFileStorage';
@@ -14,7 +13,7 @@ import { getBreadcrumbs, joinPath } from '../utils/fileUtils';
 
 // Components
 import { GlassCard } from '../components/ui/GlassCard';
-import { FileToolbar } from '../components/FileToolbar';
+import { FileHeader } from '../components/Files/FileHeader';
 import { FileGridView } from '../components/FileGridView';
 import { FileListView } from '../components/FileListView';
 import { TrashView } from '../components/TrashView';
@@ -27,9 +26,9 @@ import { useVault } from '../context/VaultContext';
 
 export default function Files({ initialPath = '/' }) {
   // Vault context
-  const { isUnlocked, unlock, setup, vaultConfig, key } = useVault();
+  const { isUnlocked, key } = useVault();
 
-  // File storage operations hook
+  // Storage Hook
   const {
     files,
     trashedFiles,
@@ -42,6 +41,7 @@ export default function Files({ initialPath = '/' }) {
     uploadFiles,
     downloadFile,
     deleteFile,
+    emptyTrash,
     restoreFile,
     renameFile,
     createFolder,
@@ -52,20 +52,7 @@ export default function Files({ initialPath = '/' }) {
     moveFile,
   } = useFileStorage(initialPath, isUnlocked ? key : null);
 
-  // Check vault access
-  // Check vault access - removed as handled globally now
-  /*
-  useEffect(() => {
-    if (path.startsWith('vault') || path.startsWith('/vault')) {
-      if (!isUnlocked) {
-        // setShowVaultModal(true); // Handled globally via header button or interceptor if we added one
-      }
-    }
-  }, [path, isUnlocked]);
-  */
-
-
-  // File preview hook
+  // Preview Hook
   const {
     previewItem,
     previewContent,
@@ -74,17 +61,26 @@ export default function Files({ initialPath = '/' }) {
     closePreview,
   } = useFilePreview();
 
-  // Search/Filter state
+  // Local UI State
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('list');
+  const [showTrash, setShowTrash] = useState(false);
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [encryptionMode, setEncryptionMode] = useState('auto');
+  const [contextMenu, setContextMenu] = useState({ isOpen: false, position: { x: 0, y: 0 }, item: null });
+  const [renameTarget, setRenameTarget] = useState(null);
 
-  // Filtered files based on search
+  // File Input Ref
+  const fileInputRef = useRef(null);
+
+  // Filter Logic
   const filteredFiles = useMemo(() => {
     if (!searchQuery.trim()) return files;
     const query = searchQuery.toLowerCase();
     return files.filter(f => f.name.toLowerCase().includes(query));
   }, [files, searchQuery]);
 
-  // Multi-selection hook
+  // Selection Hook
   const {
     selectedCount,
     selectedItems,
@@ -95,40 +91,27 @@ export default function Files({ initialPath = '/' }) {
     isSelected,
   } = useFileSelection(filteredFiles);
 
-  // View state
-  const [viewMode, setViewMode] = useState('list');
-  const [showTrash, setShowTrash] = useState(false);
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-
-  // Smart Upload Selector - encryption override mode
-  const [encryptionMode, setEncryptionMode] = useState('auto');
-
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState({ isOpen: false, position: { x: 0, y: 0 }, item: null });
-
-  // File input ref for upload button
-  const fileInputRef = useRef(null);
-
-  // Drag and drop
+  // Drag & Drop Hook
   const handleFilesDropped = useCallback((droppedFiles) => {
     uploadFiles(droppedFiles, path);
   }, [uploadFiles, path]);
 
   const { isDragging, dragProps } = useDragAndDrop(handleFilesDropped);
 
-  // Load files on mount and path change
+  // Initial Load
   useEffect(() => {
     loadFiles('/');
     loadTrash();
-  }, []);
+  }, [loadFiles, loadTrash]);
 
-  // Clear selection when path changes
+  // Path Change Logic
   useEffect(() => {
     clearSelection();
     setSearchQuery('');
   }, [path, clearSelection]);
 
-  // Handlers
+  // --- Handlers ---
+
   const handleNavigate = useCallback((item) => {
     if (!item.isDir) return;
     const nextPath = joinPath(path, item.name);
@@ -145,7 +128,6 @@ export default function Files({ initialPath = '/' }) {
 
   const handleDownload = useCallback((item) => {
     if (item.isDir) {
-      // Download folder as ZIP
       downloadFolderAsZip(joinPath(path, item.name));
     } else {
       downloadFile(item, path);
@@ -156,11 +138,6 @@ export default function Files({ initialPath = '/' }) {
     deleteFile(item, path);
   }, [deleteFile, path]);
 
-  const handleRestore = useCallback((item) => {
-    restoreFile(item, path);
-  }, [restoreFile, path]);
-
-  // Context menu handlers
   const handleContextMenu = useCallback((e, item) => {
     e.preventDefault();
     setContextMenu({
@@ -170,17 +147,10 @@ export default function Files({ initialPath = '/' }) {
     });
   }, []);
 
-  const closeContextMenu = useCallback(() => {
-    setContextMenu({ isOpen: false, position: { x: 0, y: 0 }, item: null });
-  }, []);
-
-  // Rename trigger from context menu (needs to pass to child component)
-  const [renameTarget, setRenameTarget] = useState(null);
   const handleRenameFromContext = useCallback((item) => {
     setRenameTarget(item);
   }, []);
 
-  // Handle file move (drag & drop)
   const handleMoveFile = useCallback(async (sourceItem, targetFolder) => {
     const sourcePath = joinPath(path, sourceItem.name);
     const destinationPath = joinPath(path, targetFolder.name, sourceItem.name);
@@ -208,7 +178,6 @@ export default function Files({ initialPath = '/' }) {
     if (!showTrash) loadTrash();
   }, [showTrash, loadTrash]);
 
-  // Batch action handlers
   const handleBatchDownload = useCallback(() => {
     const names = selectedItems.map(f => f.name);
     batchDownload(names, path);
@@ -227,16 +196,18 @@ export default function Files({ initialPath = '/' }) {
 
   const breadcrumbs = getBreadcrumbs(path);
 
+  // --- Render ---
+
   return (
     <div className="space-y-6">
-      {/* Error Display */}
+      {/* Error Banner */}
       {error && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
           <p className="text-rose-400 text-sm font-medium">{error}</p>
         </div>
       )}
 
-      {/* Hidden File Input */}
+      {/* Hidden Upload Input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -245,8 +216,7 @@ export default function Files({ initialPath = '/' }) {
         className="hidden"
       />
 
-
-      {/* New Folder Modal */}
+      {/* Modals & Overlays */}
       <NewFolderModal
         isOpen={showNewFolderModal}
         onClose={() => setShowNewFolderModal(false)}
@@ -254,7 +224,6 @@ export default function Files({ initialPath = '/' }) {
         currentPath={path}
       />
 
-      {/* File Preview Modal */}
       <FilePreviewModal
         previewItem={previewItem}
         previewContent={previewContent}
@@ -263,12 +232,11 @@ export default function Files({ initialPath = '/' }) {
         onDownload={handleDownload}
       />
 
-      {/* Context Menu */}
       <ContextMenu
         isOpen={contextMenu.isOpen}
         position={contextMenu.position}
         item={contextMenu.item}
-        onClose={closeContextMenu}
+        onClose={() => setContextMenu({ ...contextMenu, isOpen: false })}
         onOpen={handleNavigate}
         onPreview={handlePreview}
         onRename={handleRenameFromContext}
@@ -276,38 +244,20 @@ export default function Files({ initialPath = '/' }) {
         onDelete={handleDelete}
       />
 
-      {/* Main Content */}
+      {/* Main View */}
       {showTrash ? (
         <TrashView
           trashedFiles={trashedFiles}
           onRefresh={loadTrash}
-          onRestore={handleRestore}
-          onEmptyTrash={async () => {
-            if (!window.confirm('Papierkorb endgültig leeren? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
-            for (const item of trashedFiles) {
-              try {
-                await fetch(`${window.location.origin}/api/v1/storage/trash/delete?path=${encodeURIComponent(item.name)}`, {
-                  method: 'DELETE',
-                  credentials: 'include', // Auth cookie sent automatically
-                  headers: {
-                    'X-CSRF-Token': localStorage.getItem('csrfToken') || '',
-                  },
-                });
-              } catch (err) {
-                console.error('Failed to delete:', item.name, err);
-              }
-            }
-            loadTrash();
-          }}
+          onRestore={(item) => restoreFile(item, path)}
+          onEmptyTrash={emptyTrash}
         />
       ) : (
         <div className="relative" {...dragProps}>
-          {/* Drag & Drop Overlay */}
           <DragDropOverlay isDragging={isDragging} />
 
           <GlassCard className="!p-0">
-            {/* Toolbar */}
-            <FileToolbar
+            <FileHeader
               breadcrumbs={breadcrumbs}
               fileCount={filteredFiles.length}
               trashedCount={trashedFiles.length}
@@ -315,6 +265,10 @@ export default function Files({ initialPath = '/' }) {
               showTrash={showTrash}
               uploading={uploading}
               encryptionMode={encryptionMode}
+              searchQuery={searchQuery}
+              selectedItems={selectedItems}
+              selectedCount={selectedCount}
+              allSelected={allSelected}
               onModeChange={setEncryptionMode}
               onNavigate={navigateTo}
               onUploadClick={handleUploadClick}
@@ -322,81 +276,18 @@ export default function Files({ initialPath = '/' }) {
               onRefresh={() => loadFiles(path)}
               onViewModeChange={setViewMode}
               onToggleTrash={handleToggleTrash}
+              setSearchQuery={setSearchQuery}
+              onToggleSelectAll={handleToggleSelectAll}
+              onBatchDownload={handleBatchDownload}
+              onBatchDelete={handleBatchDelete}
+              onClearSelection={clearSelection}
             />
 
-            {/* Search & Selection Bar */}
-            <div className="px-4 py-3 border-b border-white/5 flex flex-wrap items-center gap-3">
-              {/* Search Input */}
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Dateien filtern..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2 bg-slate-800/50 border border-white/10 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500/50 transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              {/* Select All Toggle */}
-              <button
-                onClick={handleToggleSelectAll}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-sm ${allSelected
-                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                  : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10 hover:text-white'
-                  }`}
-              >
-                {allSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                <span className="hidden sm:inline">Alle auswählen</span>
-              </button>
-
-              {/* Selection Actions */}
-              {selectedCount > 0 && (
-                <div className="flex items-center gap-2 ml-auto">
-                  <span className="text-sm text-slate-400">
-                    {selectedCount} ausgewählt
-                  </span>
-                  <button
-                    onClick={handleBatchDownload}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all text-sm"
-                    title="Als ZIP herunterladen"
-                  >
-                    <Download size={16} />
-                    <span className="hidden sm:inline">ZIP</span>
-                  </button>
-                  <button
-                    onClick={handleBatchDelete}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all text-sm"
-                    title="Ausgewählte löschen"
-                  >
-                    <Trash2 size={16} />
-                    <span className="hidden sm:inline">Löschen</span>
-                  </button>
-                  <button
-                    onClick={clearSelection}
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-all"
-                    title="Auswahl aufheben"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Files Content */}
             <div className="p-6">
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 size={32} className="text-blue-400 animate-spin mb-3" />
-                  <p className="text-slate-400 text-sm">Loading files...</p>
+                  <p className="text-slate-400 text-sm">Dateien werden geladen...</p>
                 </div>
               ) : viewMode === 'grid' ? (
                 <FileGridView
