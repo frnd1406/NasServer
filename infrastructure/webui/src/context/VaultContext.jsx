@@ -6,6 +6,7 @@ const VaultContext = createContext(null);
 
 export function VaultProvider({ children }) {
     const [key, setKey] = useState(null); // CryptoKey (Raw) - Never stored in localStorage
+    const [password, setPassword] = useState(null); // Plaintext password (Memory only) for preview headers
     const [isUnlocked, setIsUnlocked] = useState(false);
     const [vaultConfig, setVaultConfig] = useState(null); // Salt, config loaded from server
     const [isLoading, setIsLoading] = useState(true);
@@ -36,6 +37,7 @@ export function VaultProvider({ children }) {
 
     const lock = useCallback(() => {
         setKey(null);
+        setPassword(null);
         setIsUnlocked(false);
     }, []);
 
@@ -52,6 +54,7 @@ export function VaultProvider({ children }) {
         // Ideally validationHash is stored in meta.
 
         setKey(derivedKey);
+        setPassword(password);
         setIsUnlocked(true);
     }, [vaultConfig]);
 
@@ -99,6 +102,7 @@ export function VaultProvider({ children }) {
         <VaultContext.Provider value={{
             isUnlocked,
             key,
+            password,
             vaultConfig,
             isLoading,
             lock,

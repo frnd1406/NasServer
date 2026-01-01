@@ -99,9 +99,12 @@ export function getFileType(name, isDir) {
 
 /**
  * Check if file can be previewed
+ * Handles .enc files by stripping extension for check
  */
 export function canPreview(name) {
-    return isImage(name) || isText(name);
+    // Strip .enc suffix transparency
+    const cleanName = name.replace(/\.enc$/i, '');
+    return isImage(cleanName) || isText(cleanName);
 }
 
 /**

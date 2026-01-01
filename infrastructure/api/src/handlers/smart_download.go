@@ -69,6 +69,11 @@ func SmartDownloadHandler(
 
 		// Parse optional parameters
 		password := c.Query("password")
+		// Security Enhancement: Checking header for password (preferred)
+		if password == "" {
+			password = c.GetHeader("X-Encryption-Password")
+		}
+
 		inline := c.Query("inline") == "true"
 		mode := c.Query("mode")
 		if mode == "" {
