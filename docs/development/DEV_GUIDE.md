@@ -1,7 +1,26 @@
 # NAS.AI Developer Guide
 
-**Version:** 2.1  
-**Updated:** 2025-12-04
+**Version:** 2.2  
+**Updated:** 2026-01-01
+
+## ⚠️ WICHTIG: Architectural Rules
+
+Dies sind die unverhandelbaren Regeln für die Entwicklung in diesem Repository.
+
+### SRP (Single Responsibility Principle)
+Handler (`src/handlers/`) sind **nur** für HTTP-Parsing, Validierung und Response-Konstruktion zuständig. Jegliche Business-Logik **muss** in Services (`src/services/`) ausgelagert werden.
+
+### No External Calls in Handlers
+Rufe niemals externe APIs (AI, S3, externe Services) direkt im Handler auf. Nutze immer einen Service Wrapper (z.B. `AIAgentService`).
+
+### Security First
+*   **Path Traversal**: Alle Pfade müssen **im Service** validiert und gesäubert werden, bevor auf das Dateisystem zugegriffen wird.
+*   **Zip Bombs**: Archiventpackung muss Größen- und Raten-Limits durchsetzen (siehe `ArchiveService`).
+
+### Testing
+Services müssen so designed sein, dass sie zu 100% unit-testbar sind. Injiziere Abhängigkeiten (Dependency Injection), um Mocking zu ermöglichen.
+
+---
 
 ## 1. Setup & Umgebung
 
@@ -87,16 +106,3 @@ docker compose -f docker-compose.prod.yml logs -f api
 # API testen
 curl http://localhost:8080/health
 ```
-
-## 7. Architectural Standards
-
-**Regeln für saubere Architektur (Single Responsibility Principle):**
-
-*   **Regel 1: Keine HTTP-Calls in Handlern.**
-    Handler dürfen nur Requests validieren und Services aufrufen. Business-Logik gehört **nicht** in den Handler layer. Nutze dedizierte Services (z.B. `AIAgentService`).
-
-*   **Regel 2: Keine Krypto-Logik in Handlern.**
-    Verschlüsselung, Entschlüsselung und Streaming-Logik müssen gekapselt sein. Nutze dafür den `ContentDeliveryService` oder `EncryptionService`.
-
-*   **Regel 3: Sicherheit zuerst (Security First).**
-    Sicherheitschecks wie Zip Slip Protection oder Path Traversal Checks müssen in den Services stattfinden, bevor auf das Dateisystem zugegriffen wird (z.B. in `ArchiveService` oder `StorageManager`).

@@ -1,36 +1,21 @@
 # NAS AI Web Interface
 
-A modern, responsive web client built with **React 18**, **Vite**, and **TailwindCSS**. It adheres to a "Glassmorphism" design aesthetic for a premium user experience.
+Das Frontend für das NAS AI System.
 
-## ✨ Key Features
+## 🛠 Tech Stack
 
-*   **Virtual Scroll**: Efficient rendering of large file lists using `react-window`.
-*   **Smart Uploads**:
-    *   Drag & Drop support.
-    *   Client-side encryption preparation.
-    *   Chunked uploads for large files.
-*   **Security**:
-    *   Vault locking/unlocking UI.
-    *   Visual indicators for encrypted files.
-*   **Responsive Design**: Mobile-friendly layout with glass-effect components.
+*   **Framework**: React 18
+*   **Build Tool**: Vite
+*   **Styling**: TailwindCSS (Glassmorphism Design)
 
-## 📂 Directory Structure
+## 📂 Project Structure
 
-*   `src/components/`: Reusable UI components (Buttons, Modals, File Cards).
-*   `src/hooks/`: Custom React hooks (`useFileStorage`, `useFileSelection`) for logic encapsulation.
-*   `src/pages/`: Main application views (Files, Dashboard, Settings).
-*   `src/context/`: Global state management (`VaultContext`, `AuthContext`).
-*   `src/lib/`: Utility libraries and API clients.
+*   `src/components`: Wiederverwendbare UI-Elemente (Buttons, Cards, Inputs).
+*   `src/hooks`: Custom Hooks für Logik-Kapselung (z.B. `useFileStorage`).
+*   `src/pages`: Definition der App-Routen und Views.
 
-## 🚀 Development
+## ✨ Features
 
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-```
+*   **Virtual Scrolling**: Performante Darstellung von Listen mit tausenden Dateien.
+*   **Client-Side Encryption Hints**: Visuelles Feedback zum Verschlüsselungsstatus.
+*   **Drag & Drop**: Intuitive Upload-Zone.

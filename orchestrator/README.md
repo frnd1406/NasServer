@@ -1,31 +1,25 @@
 # Service Orchestrator
 
-The conductor of the NAS AI system. This service monitors the health of all other components (API, Database, AI Agent) and manages service discovery.
+Überwacht die Gesundheit und Verfügbarkeit der NAS AI Dienste.
 
-## 🎯 Responsibilities
+## 🎯 Purpose
 
-1.  **Service Discovery**: dynamically registers available services.
-2.  **Health Checks**: Periodically pings services to ensure they are responsive.
-3.  **Self-Healing**: triggers restarts or alerts if critical services (like the Database) fail.
-4.  **Configuration Management**: Loads system-wide service configuration from `registry.json`.
+Gewährleistung der Systemstabilität durch kontinuierliches Monitoring der Core-Container (API, Datenbank, AI-Agent).
 
-## ⚙️ Configuration
+## ⚙️ Mechanism
 
-The `registry.json` file defines the services to watch:
+*   **Polling**: Führt regelmäßige Checks via HTTP oder TCP durch.
+*   **Self-Healing**: Startet Dienste bei Fehlfunktion automatisch neu oder alarmiert.
+
+## 📝 Configuration
+
+Die Konfiguration erfolgt über `registry.json`.
 
 ```json
 {
   "services": [
-    {
-      "name": "api-server",
-      "url": "http://api:8080/health",
-      "critical": true
-    },
-    {
-      "name": "ai-agent",
-      "url": "http://ai-service:5000/health",
-      "critical": false
-    }
+    { "name": "api", "url": "http://api:8080/health", "critical": true },
+    { "name": "db", "check": "tcp:5432", "critical": true }
   ]
 }
 ```
