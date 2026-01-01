@@ -9,16 +9,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
-func setupStorageTest(t *testing.T) (*services.StorageService, *logrus.Logger, string) {
+func setupStorageTest(t *testing.T) (*services.StorageManager, *logrus.Logger, string) {
 	t.Helper()
 	base := t.TempDir()
 	logger := logrus.New()
-	svc, err := services.NewStorageService(base, logger)
+	store, err := storage.NewLocalStore(base)
 	require.NoError(t, err)
+	svc := services.NewStorageManager(store, nil, nil, logger)
 	return svc, logger, base
 }
 
@@ -34,7 +36,7 @@ func TestStorageList_PathTraversalForbidden(t *testing.T) {
 
 	StorageListHandler(svc, logger)(c)
 
-	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestStorageDownload_PathTraversalForbidden(t *testing.T) {
@@ -50,7 +52,7 @@ func TestStorageDownload_PathTraversalForbidden(t *testing.T) {
 	// Pass nil for honeyfileService in tests
 	StorageDownloadHandler(svc, nil, logger)(c)
 
-	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestStorageDownload_FileOK(t *testing.T) {

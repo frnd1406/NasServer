@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,8 +28,9 @@ func TestSmartDownloadHandler_UnencryptedFile(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create storage service
-	storage, err := services.NewStorageService(tmpDir, logger)
+	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
+	storage := services.NewStorageManager(store, nil, nil, logger)
 
 	// Create test file
 	testContent := []byte("Hello, this is test content for download!")
@@ -38,7 +40,7 @@ func TestSmartDownloadHandler_UnencryptedFile(t *testing.T) {
 
 	// Setup router
 	router := gin.New()
-	router.GET("/download", SmartDownloadHandler(storage, nil, logger))
+	router.GET("/download", SmartDownloadHandler(storage, nil, nil, logger))
 
 	// Test download
 	req := httptest.NewRequest("GET", "/download?path=test.txt", nil)
@@ -63,8 +65,9 @@ func TestSmartDownloadHandler_EncryptedFile(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create storage service
-	storage, err := services.NewStorageService(tmpDir, logger)
+	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
+	storage := services.NewStorageManager(store, nil, nil, logger)
 
 	// Create and encrypt test file
 	password := "testpassword123"
@@ -81,7 +84,7 @@ func TestSmartDownloadHandler_EncryptedFile(t *testing.T) {
 
 	// Setup router
 	router := gin.New()
-	router.GET("/download", SmartDownloadHandler(storage, nil, logger))
+	router.GET("/download", SmartDownloadHandler(storage, nil, nil, logger))
 
 	// Test download without password (should fail)
 	req := httptest.NewRequest("GET", "/download?path=secret.txt.enc", nil)
@@ -118,8 +121,9 @@ func TestSmartDownloadHandler_RangeRequest(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create storage service
-	storage, err := services.NewStorageService(tmpDir, logger)
+	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
+	storage := services.NewStorageManager(store, nil, nil, logger)
 
 	// Create test file with known content
 	testContent := make([]byte, 1000)
@@ -132,7 +136,7 @@ func TestSmartDownloadHandler_RangeRequest(t *testing.T) {
 
 	// Setup router
 	router := gin.New()
-	router.GET("/download", SmartDownloadHandler(storage, nil, logger))
+	router.GET("/download", SmartDownloadHandler(storage, nil, nil, logger))
 
 	// Test Range request
 	req := httptest.NewRequest("GET", "/download?path=range_test.bin", nil)

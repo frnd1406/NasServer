@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nas-ai/api/src/services"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +34,9 @@ func TestValidatePathHandler_ValidWritablePath(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	c.Request = req
 
-	ValidatePathHandler(logger)(c)
+	// ValidatePath only uses logger and os/filepath, so we can pass nil for other deps
+	svc := services.NewSettingsService(nil, nil, nil, nil, logger)
+	ValidatePathHandler(svc)(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -56,7 +59,8 @@ func TestValidatePathHandler_RelativePathInvalid(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	c.Request = req
 
-	ValidatePathHandler(logger)(c)
+	svc := services.NewSettingsService(nil, nil, nil, nil, logger)
+	ValidatePathHandler(svc)(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -84,7 +88,8 @@ func TestValidatePathHandler_NonWritablePath(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	c.Request = req
 
-	ValidatePathHandler(logger)(c)
+	svc := services.NewSettingsService(nil, nil, nil, nil, logger)
+	ValidatePathHandler(svc)(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
 

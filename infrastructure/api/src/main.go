@@ -137,7 +137,15 @@ func main() {
 		logger.WithError(err).Fatal("Failed to initialize backup service")
 	}
 
-	// Initialize encryption service with configurable vault path
+	// Initialize Settings Service (Centralized Settings Logic)
+	// We pass a callback for RestartScheduler to avoid import cycle between services <-> scheduler
+	onRestartScheduler := func() error {
+		return scheduler.RestartScheduler()
+	}
+	settingsService := services.NewSettingsService(cfg, settingsRepo, backupService, onRestartScheduler, logger)
+	logger.Info("SettingsService initialized")
+
+	// Initialize Encryption Service with configurable vault path
 	// SECURITY: Zero-Knowledge Encryption!
 	// Default: /tmp/nas-vault-demo (NICHT persistent)
 	//   → Container restart = Vault weg = User muss neu einrichten
@@ -406,9 +414,9 @@ func main() {
 		middleware.CSRFMiddleware(redis, logger),
 	)
 	{
-		settingsV1.GET("/settings", handlers.SystemSettingsHandler(cfg))
-		settingsV1.PUT("/settings/backup", handlers.UpdateBackupSettingsHandler(cfg, backupService, settingsRepo, logger))
-		settingsV1.POST("/validate-path", handlers.ValidatePathHandler(logger))
+		settingsV1.GET("/settings", handlers.SystemSettingsHandler(settingsService))
+		settingsV1.PUT("/settings/backup", handlers.UpdateBackupSettingsHandler(settingsService))
+		settingsV1.POST("/validate-path", handlers.ValidatePathHandler(settingsService))
 
 		// Protected vault endpoints (require auth)
 		settingsV1.POST("/vault/setup", handlers.VaultSetupHandler(encryptionService, logger))

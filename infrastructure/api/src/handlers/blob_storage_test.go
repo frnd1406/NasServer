@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/storage"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -25,10 +26,11 @@ func setupBlobStorageTest(t *testing.T) (*gin.Engine, *BlobStorageHandler, strin
 	logger := logrus.New()
 	logger.SetOutput(os.Stdout) // Enable logs for debugging
 
-	storageService, err := services.NewStorageService(tempDir, logger)
+	store, err := storage.NewLocalStore(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	storageService := services.NewStorageManager(store, nil, nil, logger)
 
 	handler := NewBlobStorageHandler(storageService, logger)
 
