@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { authHeaders } from '../utils/auth';
 import { joinPath, isImage, isText } from '../utils/fileUtils';
+import { useVault } from '../context/VaultContext';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
