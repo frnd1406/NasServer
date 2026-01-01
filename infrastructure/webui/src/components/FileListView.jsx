@@ -76,7 +76,7 @@ export function FileListView({
                     {files.map((item) => {
                         const isRenaming = renamingItem?.name === item.name;
                         const selected = isSelected?.(item.name) || false;
-                        const isEncrypted = item.name.endsWith('.enc');
+                        const isEncrypted = item?.name?.endsWith('.enc') || false;
 
                         return (
                             <tr

@@ -27,7 +27,7 @@ export function FileCard({
 
     // Vault state for encryption indicator
     const { isUnlocked } = useVault();
-    const isEncrypted = item.name.endsWith('.enc');
+    const isEncrypted = item?.name?.endsWith('.enc') || false;
 
     // Long-press handler for mobile preview
     const handleLongPress = useCallback(() => {
