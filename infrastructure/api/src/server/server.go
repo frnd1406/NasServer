@@ -16,7 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/handlers"
+	"github.com/nas-ai/api/src/handlers/files"
 	"github.com/nas-ai/api/src/middleware"
 	"github.com/nas-ai/api/src/repository"
 	"github.com/nas-ai/api/src/scheduler"
@@ -68,7 +68,7 @@ type Server struct {
 	consistencyService      *services.ConsistencyService
 
 	// Handlers
-	blobStorageHandler *handlers.BlobStorageHandler
+	blobStorageHandler *files.BlobStorageHandler
 }
 
 // NewServer creates and initializes all server dependencies
@@ -265,7 +265,7 @@ func (s *Server) initServices() error {
 
 // initHandlers initializes HTTP handlers
 func (s *Server) initHandlers() {
-	s.blobStorageHandler = handlers.NewBlobStorageHandler(s.storageService, s.logger)
+	s.blobStorageHandler = files.NewBlobStorageHandler(s.storageService, s.logger)
 	s.logger.Info("BlobStorageHandler initialized")
 }
 
