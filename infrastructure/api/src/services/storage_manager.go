@@ -26,8 +26,6 @@ var (
 	ErrFileTooLarge    = errors.New("file exceeds maximum size")
 )
 
-const MaxUploadSize = 100 * 1024 * 1024 // 100 MB
-
 // StorageManager orchestrates file storage, encryption, and metadata.
 type StorageManager struct {
 	store     storage.StorageProvider
@@ -80,7 +78,7 @@ func (s *StorageManager) SaveWithEncryption(
 	}
 
 	// 1. Validation
-	if err := s.ValidateFileSize(fileHeader); err != nil {
+	if err := s.ValidateFileSize(file, fileHeader); err != nil {
 		return nil, err
 	}
 	// Detect MIME and Validate Type

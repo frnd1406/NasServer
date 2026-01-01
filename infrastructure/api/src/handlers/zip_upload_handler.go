@@ -144,7 +144,7 @@ func UnzipSecure(zipData []byte, destination string, logger *logrus.Logger) (*Un
 }
 
 // StorageUploadZipHandler handles the upload and extraction of ZIP files
-func StorageUploadZipHandler(storageService *services.StorageService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadZipHandler(storageService *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Initialize logger with context
 		requestID := c.GetString("RequestId")

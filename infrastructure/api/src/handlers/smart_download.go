@@ -56,7 +56,7 @@ type DownloadRequest struct {
 // Headers:
 //   - Range: Optional. Byte range for partial content (video seeking)
 func SmartDownloadHandler(
-	storage *services.StorageService,
+	storage *services.StorageManager,
 	honeySvc *services.HoneyfileService,
 	encryptionSvc *services.EncryptionService,
 	logger *logrus.Logger,
