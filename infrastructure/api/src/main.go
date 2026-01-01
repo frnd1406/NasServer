@@ -220,6 +220,10 @@ func main() {
 	encryptionPolicyService := services.NewEncryptionPolicyService()
 	logger.Info("EncryptionPolicyService initialized for hybrid upload pipeline")
 
+	// Initialize ArchiveService (Centralized Zip Logic)
+	archiveService := services.NewArchiveService(logger)
+	logger.Info("ArchiveService initialized")
+
 	// Initialize AIAgentService (Centralized AI Logic)
 	aiAgentService := services.NewAIAgentService(logger, honeyfileService, cfg.InternalAPISecret)
 	logger.Info("AIAgentService initialized")
@@ -469,7 +473,7 @@ func main() {
 		storageV1.POST("/rename", handlers.StorageRenameHandler(storageService, logger))
 		storageV1.POST("/move", handlers.StorageMoveHandler(storageService, logger))
 		storageV1.POST("/mkdir", handlers.StorageMkdirHandler(storageService, logger))
-		storageV1.POST("/upload-zip", handlers.StorageUploadZipHandler(storageService, logger))
+		storageV1.POST("/upload-zip", handlers.StorageUploadZipHandler(storageService, archiveService, logger))
 	}
 
 	// Encrypted Storage API (separate from regular storage)
