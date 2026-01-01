@@ -220,6 +220,10 @@ func main() {
 	encryptionPolicyService := services.NewEncryptionPolicyService()
 	logger.Info("EncryptionPolicyService initialized for hybrid upload pipeline")
 
+	// Initialize AIAgentService (Centralized AI Logic)
+	aiAgentService := services.NewAIAgentService(logger, honeyfileService, cfg.InternalAPISecret)
+	logger.Info("AIAgentService initialized")
+
 	// Phase 8: Dead Man's Switch (Alerting)
 	alertService := services.NewAlertService(emailService, cfg, logger)
 	// Start background alert ticker (every 5 minutes)
@@ -449,7 +453,7 @@ func main() {
 	)
 	{
 		storageV1.GET("/files", handlers.StorageListHandler(storageService, logger))
-		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, encryptionPolicyService, honeyfileService, cfg, logger))
+		storageV1.POST("/upload", handlers.StorageUploadHandler(storageService, encryptionPolicyService, honeyfileService, aiAgentService, logger))
 		storageV1.GET("/download", handlers.StorageDownloadHandler(storageService, honeyfileService, logger))
 
 		// ==== PHASE 4: Smart Download (Hybrid Streaming) ====
@@ -457,7 +461,7 @@ func main() {
 		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, encryptionService, logger))
 		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
 		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
-		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, cfg, logger))
+		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, aiAgentService, logger))
 		storageV1.GET("/trash", handlers.StorageTrashListHandler(storageService, logger))
 		storageV1.POST("/trash/restore/:id", handlers.StorageTrashRestoreHandler(storageService, logger))
 		storageV1.DELETE("/trash/:id", handlers.StorageTrashDeleteHandler(storageService, logger))

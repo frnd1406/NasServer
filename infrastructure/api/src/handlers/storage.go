@@ -3,8 +3,6 @@ package handlers
 import (
 	"archive/zip"
 	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,176 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/models"
 	"github.com/nas-ai/api/src/services"
 	"github.com/sirupsen/logrus"
 )
-
-// AI-indexable MIME types (text-based files only)
-var aiIndexableMimeTypes = map[string]bool{
-	"text/plain":      true,
-	"application/pdf": true,
-	"text/markdown":   true,
-	"text/csv":        true,
-}
-
-// AIAgentPayload represents the data sent to the AI knowledge agent
-type AIAgentPayload struct {
-	FilePath string `json:"file_path"`
-	FileID   string `json:"file_id"`
-	MimeType string `json:"mime_type"`
-	Content  string `json:"content,omitempty"` // Optional: if set, agent uses this instead of reading from disk
-}
-
-// notifyAIAgent sends a fire-and-forget notification to the AI knowledge agent
-func notifyAIAgent(filePath, fileID, mimeType string, content string, honeySvc *services.HoneyfileService, internalSecret string, logger *logrus.Logger) {
-	// Run asynchronously to avoid blocking the upload response
-	go func() {
-		// SECURITY: Never index monitored resources
-		if honeySvc != nil && honeySvc.CheckAndTrigger(context.Background(), filePath, services.RequestMetadata{Action: "index_scan", IPAddress: "internal"}) {
-			logger.WithField("file_path", filePath).Info("Skipping AI indexing for monitored resource")
-			return
-		}
-
-		// Check if file is eligible for AI indexing
-		if !aiIndexableMimeTypes[mimeType] {
-			logger.WithFields(logrus.Fields{
-				"file_path": filePath,
-				"mime_type": mimeType,
-			}).Info("Skipping AI indexing for non-text file")
-			return
-		}
-
-		// If content is empty but mime type is text, log a debug message (Legacy Mode / Disk Read)
-		if content == "" {
-			logger.WithField("file_id", fileID).Debug("Indexing triggered without inline content (Legacy Mode)")
-		}
-
-		payload := AIAgentPayload{
-			FilePath: filePath,
-			FileID:   fileID,
-			MimeType: mimeType,
-			Content:  content,
-		}
-
-		payloadBytes, err := json.Marshal(payload)
-		if err != nil {
-			logger.WithError(err).Warn("Failed to marshal AI agent payload")
-			return
-		}
-
-		// AI agent endpoint (internal Docker DNS)
-		aiAgentURL := "http://ai-knowledge-agent:5000/process"
-
-		// Create HTTP request with timeout
-		req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
-		if err != nil {
-			logger.WithError(err).Warn("Failed to create AI agent request")
-			return
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-		// SECURITY: Internal Auth
-		if internalSecret != "" {
-			req.Header.Set("X-Internal-Secret", internalSecret)
-		}
-
-		// Use a client with timeout to prevent hanging
-		client := &http.Client{
-			Timeout: 10 * time.Second,
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"url":       aiAgentURL,
-				"file_path": filePath,
-				"error":     err.Error(),
-			}).Warn("Failed to trigger AI agent")
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			logger.WithFields(logrus.Fields{
-				"file_path": filePath,
-				"file_id":   fileID,
-				"mime_type": mimeType,
-			}).Info("Triggered AI agent successfully")
-		} else {
-			logger.WithFields(logrus.Fields{
-				"status_code": resp.StatusCode,
-				"file_path":   filePath,
-			}).Warn("AI agent returned non-200 status")
-		}
-	}()
-}
-
-// notifyAIAgentDelete sends a SYNCHRONOUS deletion notification to the AI knowledge agent.
-// This prevents "ghost knowledge" by removing embeddings when files are deleted.
-// Returns error if AI agent is unreachable, but caller should soft-fail (log, don't block user).
-func notifyAIAgentDelete(filePath, fileID string, internalSecret string, logger *logrus.Logger) error {
-	payload := map[string]string{
-		"file_path": filePath,
-		"file_id":   fileID,
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		logger.WithError(err).Warn("Failed to marshal AI agent delete payload")
-		return fmt.Errorf("marshal payload: %w", err)
-	}
-
-	// AI agent delete endpoint
-	aiAgentURL := "http://ai-knowledge-agent:5000/delete"
-
-	req, err := http.NewRequest("POST", aiAgentURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		logger.WithError(err).Warn("Failed to create AI agent delete request")
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if internalSecret != "" {
-		req.Header.Set("X-Internal-Secret", internalSecret)
-	}
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.WithFields(logrus.Fields{
-			"url":       aiAgentURL,
-			"file_path": filePath,
-			"file_id":   fileID,
-			"error":     err.Error(),
-		}).Warn("Failed to notify AI agent of deletion")
-		return fmt.Errorf("AI agent unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		logger.WithFields(logrus.Fields{
-			"file_path": filePath,
-			"file_id":   fileID,
-		}).Info("AI agent deletion completed successfully")
-		return nil
-	}
-
-	// Non-2xx status - log but treat as soft error
-	logger.WithFields(logrus.Fields{
-		"status_code": resp.StatusCode,
-		"file_path":   filePath,
-		"file_id":     fileID,
-	}).Warn("AI agent delete returned non-2xx status")
-	return fmt.Errorf("AI agent returned status %d", resp.StatusCode)
-}
 
 func handleStorageError(c *gin.Context, err error, logger *logrus.Logger, requestID string) {
 	status := http.StatusBadRequest
@@ -239,7 +73,7 @@ func StorageListHandler(storage *services.StorageManager, logger *logrus.Logger)
 	}
 }
 
-func StorageUploadHandler(storage *services.StorageManager, policyService *services.EncryptionPolicyService, honeySvc *services.HoneyfileService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadHandler(storage *services.StorageManager, policyService *services.EncryptionPolicyService, honeySvc *services.HoneyfileService, aiService *services.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -314,15 +148,13 @@ func StorageUploadHandler(storage *services.StorageManager, policyService *servi
 		// Only index UNENCRYPTED files (can't index encrypted content!)
 		if encryptionMode == models.EncryptionNone {
 			var extractedText string
-			if aiIndexableMimeTypes[result.MimeType] {
-				if _, err := src.Seek(0, 0); err == nil {
-					const MaxIndexSize = 2 * 1024 * 1024
-					buf := new(bytes.Buffer)
-					io.CopyN(buf, src, MaxIndexSize)
-					extractedText = buf.String()
-				}
+			if _, err := src.Seek(0, 0); err == nil {
+				const MaxIndexSize = 2 * 1024 * 1024
+				buf := new(bytes.Buffer)
+				io.CopyN(buf, src, MaxIndexSize)
+				extractedText = buf.String()
 			}
-			notifyAIAgent(result.Path, result.FileID, result.MimeType, extractedText, honeySvc, cfg.InternalAPISecret, logger)
+			aiService.NotifyUpload(result.Path, result.FileID, result.MimeType, extractedText)
 		} else {
 			logger.WithField("filename", fileHeader.Filename).Debug("Skipping AI indexing for encrypted file")
 		}
@@ -381,7 +213,7 @@ func StorageDownloadHandler(storage *services.StorageManager, honeySvc *services
 	}
 }
 
-func StorageDeleteHandler(storage *services.StorageManager, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDeleteHandler(storage *services.StorageManager, aiService *services.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -403,7 +235,7 @@ func StorageDeleteHandler(storage *services.StorageManager, cfg *config.Config, 
 		// Notify AI agent to delete embeddings (prevents ghost knowledge)
 		// SYNCHRONOUS call - waits for AI agent response before returning 200
 		// Soft-fail: log error but don't block user if AI agent is down
-		if err := notifyAIAgentDelete(fullPath, fileID, cfg.InternalAPISecret, logger); err != nil {
+		if err := aiService.NotifyDelete(fullPath, fileID); err != nil {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
 				"file_path":  fullPath,
