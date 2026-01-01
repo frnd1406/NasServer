@@ -1,9 +1,10 @@
 // File List View component (table view) with multi-select support
 
 import { useState, useEffect } from 'react';
-import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square } from 'lucide-react';
+import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
+import { useVault } from '../context/VaultContext';
 
 export function FileListView({
     files,
@@ -20,6 +21,9 @@ export function FileListView({
 }) {
     const [renamingItem, setRenamingItem] = useState(null);
     const [newName, setNewName] = useState('');
+
+    // Vault state for encryption indicator
+    const { isUnlocked } = useVault();
 
     // Trigger rename from context menu
     useEffect(() => {
@@ -72,6 +76,7 @@ export function FileListView({
                     {files.map((item) => {
                         const isRenaming = renamingItem?.name === item.name;
                         const selected = isSelected?.(item.name) || false;
+                        const isEncrypted = item.name.endsWith('.enc');
 
                         return (
                             <tr
@@ -123,6 +128,12 @@ export function FileListView({
                                             <div className={`p-2 rounded-lg ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-400'}`}>
                                                 <FileIcon name={item.name} isDir={item.isDir} size={16} />
                                             </div>
+                                            {/* Encryption Status Indicator */}
+                                            {isEncrypted && (
+                                                <span className={`flex items-center ${isUnlocked ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                    {isUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
+                                                </span>
+                                            )}
                                             <span className={item.isDir ? "hover:text-blue-400 transition-colors" : ""}>
                                                 {item.name}
                                             </span>

@@ -1,10 +1,11 @@
 // File Card component for Grid View with selection support
 
 import { useState, useEffect, useCallback } from 'react';
-import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square } from 'lucide-react';
+import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
 import { useLongPress } from '../hooks/useLongPress';
+import { useVault } from '../context/VaultContext';
 
 export function FileCard({
     item,
@@ -23,6 +24,10 @@ export function FileCard({
     const [isRenaming, setIsRenaming] = useState(false);
     const [newName, setNewName] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
+
+    // Vault state for encryption indicator
+    const { isUnlocked } = useVault();
+    const isEncrypted = item.name.endsWith('.enc');
 
     // Long-press handler for mobile preview
     const handleLongPress = useCallback(() => {
@@ -131,9 +136,19 @@ export function FileCard({
             </div>
 
             <div className="p-4 flex flex-col items-center text-center">
-                {/* Icon */}
-                <div className={`p-4 rounded-xl mb-3 ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800/50 text-slate-400'} group-hover:scale-110 transition-transform`}>
+                {/* Icon with Encryption Indicator */}
+                <div className={`relative p-4 rounded-xl mb-3 ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800/50 text-slate-400'} group-hover:scale-110 transition-transform`}>
                     <FileIcon name={item.name} isDir={item.isDir} size={32} />
+                    {/* Encryption Status Indicator */}
+                    {isEncrypted && (
+                        <div className={`absolute -top-1 -right-1 p-1 rounded-full ${isUnlocked ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
+                            {isUnlocked ? (
+                                <Unlock size={14} className="text-emerald-400" />
+                            ) : (
+                                <Lock size={14} className="text-rose-400" />
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Name */}

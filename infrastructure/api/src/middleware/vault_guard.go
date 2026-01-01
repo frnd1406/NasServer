@@ -13,9 +13,10 @@ func VaultGuard(encSvc *services.EncryptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !encSvc.IsUnlocked() {
 			c.JSON(http.StatusLocked, gin.H{
-				"error":   "vault is locked",
-				"message": "Please unlock the vault to access this resource",
+				"error":   "🔒 Vault ist gesperrt",
+				"message": "Der Vault muss entsperrt werden, um auf verschlüsselte Dateien zuzugreifen. Bitte gib dein Master-Passwort ein.",
 				"code":    "VAULT_LOCKED",
+				"action":  "Gehe zu Einstellungen → Vault und entsperre mit deinem Master-Passwort.",
 			})
 			c.Abort()
 			return
@@ -30,9 +31,10 @@ func VaultConfigured(encSvc *services.EncryptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !encSvc.IsConfigured() {
 			c.JSON(http.StatusPreconditionFailed, gin.H{
-				"error":   "vault not configured",
-				"message": "Please run vault setup first",
+				"error":   "🔐 Vault nicht eingerichtet",
+				"message": "Der Vault muss zuerst eingerichtet werden, bevor verschlüsselte Dateien genutzt werden können. Lege ein Master-Passwort fest, um zu starten.",
 				"code":    "VAULT_NOT_CONFIGURED",
+				"action":  "Gehe zu Einstellungen → Vault und erstelle ein Master-Passwort.",
 			})
 			c.Abort()
 			return

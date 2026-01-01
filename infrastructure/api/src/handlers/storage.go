@@ -266,8 +266,10 @@ func StorageUploadHandler(storage *services.StorageService, policyService *servi
 		// Validate USER mode has password
 		if encryptionMode == models.EncryptionUser && encryptionPassword == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "encryption_password is required when file will be encrypted",
-				"hint":  "This file type or override requires encryption",
+				"error":   "🔐 Verschlüsselung erforderlich",
+				"message": "Diese Datei muss verschlüsselt werden (PDF, Dokumente, etc.). Bitte richte zuerst den Vault ein unter Einstellungen → Vault, oder lade die Datei ohne Verschlüsselung hoch.",
+				"code":    "VAULT_SETUP_REQUIRED",
+				"action":  "Gehe zu Einstellungen → Vault und richte ein Master-Passwort ein.",
 			})
 			return
 		}
