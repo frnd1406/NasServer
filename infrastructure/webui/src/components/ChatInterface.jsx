@@ -1,15 +1,31 @@
 import React, { useRef, useEffect } from 'react';
-import { Send, Bot, Loader2 } from 'lucide-react';
+import { Send, Bot, Loader2, Trash2, AlertCircle } from 'lucide-react';
 import { useChatSession } from '../hooks/useChatSession';
 import { MessageList } from './MessageList';
 
 /**
  * ChatInterface Component (SRP: Layout & UI Orchestration Only)
- * All state logic is delegated to useChatSession hook.
- * All message rendering is delegated to MessageList component.
+ * 
+ * Responsibilities:
+ * - Layout structure (header, messages area, input)
+ * - Auto-scroll behavior
+ * - Form submission handling
+ * 
+ * Delegations:
+ * - State logic → useChatSession hook
+ * - Message rendering → MessageList component
  */
 const ChatInterface = () => {
-    const { messages, isLoading, input, setInput, sendMessage } = useChatSession();
+    const {
+        messages,
+        isLoading,
+        error,
+        input,
+        setInput,
+        sendMessage,
+        clearSession
+    } = useChatSession();
+
     const messagesEndRef = useRef(null);
 
     // Auto-scroll to bottom when messages change
@@ -25,15 +41,35 @@ const ChatInterface = () => {
     return (
         <div className="flex flex-col h-[600px] bg-[#0f172a] rounded-xl border border-white/10 overflow-hidden shadow-2xl">
             {/* Header */}
-            <div className="p-4 border-b border-white/10 bg-[#1e293b]/50 backdrop-blur flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
-                    <Bot size={20} />
+            <div className="p-4 border-b border-white/10 bg-[#1e293b]/50 backdrop-blur flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <Bot size={20} />
+                    </div>
+                    <div>
+                        <h3 className="font-medium text-white">AI Knowledge Assistant</h3>
+                        <p className="text-xs text-slate-400">Powered by Llama 3.2 & RAG</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="font-medium text-white">AI Knowledge Assistant</h3>
-                    <p className="text-xs text-slate-400">Powered by Llama 3.2 & RAG</p>
-                </div>
+                {/* Clear Session Button */}
+                {messages.length > 1 && (
+                    <button
+                        onClick={clearSession}
+                        className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                        title="Chat leeren"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                )}
             </div>
+
+            {/* Error Banner */}
+            {error && (
+                <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2 text-red-400 text-sm">
+                    <AlertCircle size={16} />
+                    <span>{error}</span>
+                </div>
+            )}
 
             {/* Messages Area (Delegated to MessageList) */}
             <MessageList
