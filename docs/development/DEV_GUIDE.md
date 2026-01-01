@@ -87,3 +87,16 @@ docker compose -f docker-compose.prod.yml logs -f api
 # API testen
 curl http://localhost:8080/health
 ```
+
+## 7. Architectural Standards
+
+**Regeln für saubere Architektur (Single Responsibility Principle):**
+
+*   **Regel 1: Keine HTTP-Calls in Handlern.**
+    Handler dürfen nur Requests validieren und Services aufrufen. Business-Logik gehört **nicht** in den Handler layer. Nutze dedizierte Services (z.B. `AIAgentService`).
+
+*   **Regel 2: Keine Krypto-Logik in Handlern.**
+    Verschlüsselung, Entschlüsselung und Streaming-Logik müssen gekapselt sein. Nutze dafür den `ContentDeliveryService` oder `EncryptionService`.
+
+*   **Regel 3: Sicherheit zuerst (Security First).**
+    Sicherheitschecks wie Zip Slip Protection oder Path Traversal Checks müssen in den Services stattfinden, bevor auf das Dateisystem zugegriffen wird (z.B. in `ArchiveService` oder `StorageManager`).
