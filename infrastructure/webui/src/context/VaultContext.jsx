@@ -21,7 +21,10 @@ export function VaultProvider({ children }) {
             // Try to fetch hidden meta file
             // We assume it's at /vault/.meta.json
             // Using standard download endpoint which might fail if file doesn't exist
-            const res = await fetch('/api/v1/storage/download?path=vault/.meta.json');
+            // Must include credentials for HttpOnly cookie auth
+            const res = await fetch('/api/v1/storage/download?path=vault/.meta.json', {
+                credentials: 'include'
+            });
             if (res.ok) {
                 const meta = await res.json();
                 setVaultConfig(meta);
