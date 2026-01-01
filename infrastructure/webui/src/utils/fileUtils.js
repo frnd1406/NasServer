@@ -31,9 +31,13 @@ const AUDIO_EXTENSIONS = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a'];
 
 /**
  * Get file extension from filename
+ * Strips .enc suffix for type detection
  */
 export function getFileExtension(name) {
-    return name.split('.').pop()?.toLowerCase() || '';
+    if (!name) return '';
+    // Strip .enc if present to detect underlying type
+    const cleanName = name.replace(/\.enc$/i, '');
+    return cleanName.split('.').pop()?.toLowerCase() || '';
 }
 
 /**

@@ -1,120 +1,101 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { deriveKey, arrayBufferToBase64, base64ToUint8Array } from '../lib/crypto';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '../lib/api';
 
-const VaultContext = createContext(null);
+const VaultContext = createContext();
 
 export function VaultProvider({ children }) {
-    const [key, setKey] = useState(null); // CryptoKey (Raw) - Never stored in localStorage
-    const [password, setPassword] = useState(null); // Plaintext password (Memory only) for preview headers
     const [isUnlocked, setIsUnlocked] = useState(false);
-    const [vaultConfig, setVaultConfig] = useState(null); // Salt, config loaded from server
-    const [isLoading, setIsLoading] = useState(true);
+    const [password, setPassword] = useState(null); // Store password for uploads (Zero-Knowledge: RAM only)
+    const [hasVault, setHasVault] = useState(false);
+    const [loading, setLoading] = useState(true);
 
-    // Load vault metadata on mount
-    useEffect(() => {
-        checkVaultStatus();
+    const checkVaultStatus = useCallback(async () => {
+        try {
+            const status = await apiRequest('/api/v1/vault/status');
+            setHasVault(status.configured);
+            setIsUnlocked(!status.locked);
+            if (status.locked) {
+                setPassword(null); // Clear password if locked on server
+            }
+        } catch (err) {
+            console.error('Failed to check vault status:', err);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    const checkVaultStatus = async () => {
+    useEffect(() => {
+        checkVaultStatus();
+
+        // Listen for global lock events (e.g., from 423 responses)
+        const handleLockEvent = () => {
+            setIsUnlocked(false);
+            setPassword(null);
+            checkVaultStatus();
+        };
+
+        window.addEventListener('vault-locked', handleLockEvent);
+        return () => window.removeEventListener('vault-locked', handleLockEvent);
+    }, [checkVaultStatus]);
+
+    const unlock = async (pwd) => {
         try {
-            // Try to fetch hidden meta file
-            // We assume it's at /vault/.meta.json
-            // Using standard download endpoint which might fail if file doesn't exist
-            // Must include credentials for HttpOnly cookie auth
-            const res = await fetch('/api/v1/storage/download?path=vault/.meta.json', {
-                credentials: 'include'
+            await apiRequest('/api/v1/system/vault/unlock', {
+                method: 'POST',
+                body: JSON.stringify({ password: pwd })
             });
-            if (res.ok) {
-                const meta = await res.json();
-                setVaultConfig(meta);
-            } else {
-                setVaultConfig(null); // Not setup
-            }
-        } catch (e) {
-            console.warn("Vault metadata check failed:", e);
-        } finally {
-            setIsLoading(false);
+            setIsUnlocked(true);
+            setPassword(pwd); // Store in RAM for file operations
+            return true;
+        } catch (err) {
+            console.error('Unlock failed:', err);
+            throw err;
         }
     };
 
-    const lock = useCallback(() => {
-        setKey(null);
-        setPassword(null);
-        setIsUnlocked(false);
-    }, []);
-
-    const unlock = useCallback(async (password) => {
-        if (!vaultConfig?.salt) {
-            throw new Error("Vault configuration missing");
-        }
-
-        const salt = base64ToUint8Array(vaultConfig.salt);
-        const derivedKey = await deriveKey(password, salt);
-
-        // Verify key? We can't verify unless we try to decrypt something or verify a hash.
-        // For now, we accept it. If it's wrong, decryption will fail later.
-        // Ideally validationHash is stored in meta.
-
-        setKey(derivedKey);
-        setPassword(password);
-        setIsUnlocked(true);
-    }, [vaultConfig]);
-
-    const setup = useCallback(async (data) => {
-        // data = { key: CryptoKey, salt: string (base64) }
-
-        // 1. Create vault directory
+    const setup = async (pwd) => {
         try {
-            await apiRequest('/api/v1/storage/mkdir', {
+            await apiRequest('/api/v1/system/vault/setup', {
                 method: 'POST',
-                body: JSON.stringify({ path: 'vault' })
+                body: JSON.stringify({ masterPassword: pwd })
             });
-        } catch (e) {
-            // Ignore if exists
+            setHasVault(true);
+            setIsUnlocked(true);
+            setPassword(pwd); // Store in RAM for file operations
+            return true;
+        } catch (err) {
+            console.error('Setup failed:', err);
+            throw err;
         }
+    };
 
-        // 2. Upload metadata
-        const meta = {
-            salt: data.salt,
-            created: new Date().toISOString(),
-            version: 1
-        };
-
-        const blob = new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' });
-        const formData = new FormData();
-        formData.append('file', blob, '.meta.json'); // Filename
-
-        // Upload to /vault/
-        // Note: Access token is now sent via HttpOnly cookie
-        await fetch('/api/v1/storage/upload?path=vault', {
-            method: 'POST',
-            body: formData,
-            credentials: 'include', // Send auth cookie
-            headers: {
-                'X-CSRF-Token': localStorage.getItem('csrfToken') || ''
-            }
-        });
-
-        setKey(data.key);
-        setVaultConfig(meta);
-        setIsUnlocked(true);
-    }, []);
+    const lock = async () => {
+        try {
+            await apiRequest('/api/v1/system/vault/lock', { method: 'POST' });
+        } catch (err) {
+            console.warn('Lock failed on server (might already be locked):', err);
+        } finally {
+            setIsUnlocked(false);
+            setPassword(null); // CLEAR PASSWORD FROM MEMORY
+        }
+    };
 
     return (
         <VaultContext.Provider value={{
             isUnlocked,
-            key,
-            password,
-            vaultConfig,
-            isLoading,
-            lock,
+            password, // Exposed for useFileStorage
+            hasVault,
+            loading,
             unlock,
-            setup
+            setup,
+            lock,
+            checkVaultStatus
         }}>
             {children}
         </VaultContext.Provider>
     );
 }
 
-export const useVault = () => useContext(VaultContext);
+export function useVault() {
+    return useContext(VaultContext);
+}

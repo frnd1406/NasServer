@@ -62,7 +62,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { accessToken } = getAuth();
+  const { vaultConfig } = useVault(); // Read vault config to check if setup is needed
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -288,12 +288,12 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
               </button>
             ) : (
               <>
-                {isAuthenticated() && (
+                {isAuthenticated() ? (
                   <>
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5 mb-3">
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 mb-3">
                       <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden border border-white/10">
                         <div className="w-full h-full bg-gradient-to-tr from-slate-600 to-slate-500 flex items-center justify-center text-xs text-white font-bold">
-                          {accessToken ? 'AU' : 'U'}
+                          AU
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -309,8 +309,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
                       <span className="font-medium text-sm">Logout</span>
                     </button>
                   </>
-                )}
-                {!accessToken && (
+                ) : (
                   <Link to="/login" className="flex items-center gap-3 w-full p-3 rounded-xl text-blue-400 hover:bg-blue-500/10 transition-colors">
                     <span className="font-medium text-sm">Login</span>
                   </Link>
@@ -392,6 +391,7 @@ export default function Layout({ title = "NAS AI v1.0.0" }) {
         onClose={() => setShowVaultModal(false)}
         onUnlock={handleVaultUnlock}
         onSetup={handleVaultSetup}
+        hasVault={!!vaultConfig}
       />
     </div>
   );

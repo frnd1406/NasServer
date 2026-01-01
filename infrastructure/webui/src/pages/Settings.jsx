@@ -41,7 +41,6 @@ import {
 import { useTheme } from "../components/ThemeToggle";
 import { useToast } from "../components/Toast";
 import { apiRequest } from "../lib/api";
-import { getAuth } from "../utils/auth";
 
 // Lazy load new settings tabs
 const StorageTab = lazy(() => import("../components/settings/StorageTab"));
@@ -118,14 +117,12 @@ export default function Settings() {
 
     // Load user profile
     useEffect(() => {
-        const auth = getAuth();
-        if (auth.accessToken) {
-            // For now, use placeholder - would come from API
-            setProfile({
-                username: "Admin User",
-                email: "admin@nas.local"
-            });
-        }
+        // In future: Fetch from API /api/v1/user/me
+        // For now, we assume user is logged in if they access this page
+        setProfile({
+            username: "Admin User",
+            email: "admin@nas.local"
+        });
     }, []);
 
     // Load system info for About section

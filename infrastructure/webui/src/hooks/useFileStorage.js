@@ -7,10 +7,7 @@ import { uploadFile as apiUploadFile } from '../lib/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
-import { calculateTotalChunks, fileChunkIterator } from '../utils/chunking';
-import { encryptChunk, generateIV, arrayBufferToBase64 } from '../lib/crypto';
-
-export function useFileStorage(initialPath = '/', vaultKey = null) {
+export function useFileStorage(initialPath = '/', vaultPassword = null) {
     const [files, setFiles] = useState([]);
     const [trashedFiles, setTrashedFiles] = useState([]);
     const [path, setPath] = useState(initialPath);
@@ -86,49 +83,16 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
                 const file = filesToUpload[i];
                 console.log(`Uploading file ${i + 1}/${filesToUpload.length}:`, file.name);
 
-                const isVault = (currentPath.startsWith('vault') || currentPath.startsWith('/vault')) && vaultKey;
+                const isVault = (currentPath.startsWith('vault') || currentPath.startsWith('/vault'));
 
                 if (isVault) {
-                    if (!vaultKey) throw new Error("Vault locked: Cannot upload");
+                    if (!vaultPassword) throw new Error("Vault locked: Cannot upload");
 
-                    const encFilename = file.name + ".enc";
-                    const initRes = await fetch(`${API_BASE}/api/v1/vault/upload/init`, {
-                        method: 'POST',
-                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename: encFilename, total_size: file.size })
+                    // Use standard upload with Forced Encryption + Password
+                    await apiUploadFile(file, currentPath, {
+                        encryptionOverride: 'force',
+                        encryptionPassword: vaultPassword
                     });
-
-                    if (!initRes.ok) throw new Error("Vault upload init failed");
-                    const { upload_id } = await initRes.json();
-
-                    let chunkIndex = 0;
-                    for await (const chunkCtx of fileChunkIterator(file)) {
-                        const chunkIV = generateIV();
-                        const encryptedBuffer = await encryptChunk(chunkCtx.data, vaultKey, chunkIV);
-
-                        const combined = new Uint8Array(chunkIV.length + encryptedBuffer.byteLength);
-                        combined.set(chunkIV);
-                        combined.set(new Uint8Array(encryptedBuffer), chunkIV.length);
-
-                        const chunkRes = await fetch(`${API_BASE}/api/v1/vault/upload/chunk/${upload_id}`, {
-                            method: 'POST',
-                            headers: {
-                                ...authHeaders(),
-                                'Content-Type': 'application/octet-stream'
-                            },
-                            body: combined
-                        });
-
-                        if (!chunkRes.ok) throw new Error(`Chunk ${chunkIndex} upload failed`);
-                        chunkIndex++;
-                    }
-
-                    await fetch(`${API_BASE}/api/v1/vault/upload/finalize/${upload_id}`, {
-                        method: 'POST',
-                        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ path: 'vault' })
-                    });
-
                 } else {
                     await apiUploadFile(file, currentPath, encryptionMode);
                 }
@@ -144,7 +108,7 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         } finally {
             setUploading(false);
         }
-    }, [loadFiles, vaultKey]);
+    }, [loadFiles, vaultPassword]);
 
     // Download file
     const downloadFile = useCallback(async (item, currentPath) => {

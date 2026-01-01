@@ -26,7 +26,7 @@ import { useVault } from '../context/VaultContext';
 
 export default function Files({ initialPath = '/' }) {
   // Vault context
-  const { isUnlocked, key } = useVault();
+  const { isUnlocked, password } = useVault();
 
   // Storage Hook
   const {
@@ -50,7 +50,7 @@ export default function Files({ initialPath = '/' }) {
     downloadFolderAsZip,
     batchDelete,
     moveFile,
-  } = useFileStorage(initialPath, isUnlocked ? key : null);
+  } = useFileStorage(initialPath, isUnlocked ? password : null);
 
   // Preview Hook
   const {

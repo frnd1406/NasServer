@@ -577,16 +577,32 @@ export async function getSystemCapabilities(fileSizeBytes) {
  * @param {string} encryptionOverride - 'auto', 'force', or 'none'
  * @returns {Promise<any>}
  */
-export async function uploadFile(file, path, encryptionOverride = 'auto') {
+export async function uploadFile(file, path, optionsOrEncryptionOverride = 'auto') {
   const form = new FormData();
   form.append('file', file);
   form.append('path', path);
+
+  let encryptionOverride = 'auto';
+  let options = {};
+
+  // Handle backward compatibility or object options
+  if (typeof optionsOrEncryptionOverride === 'string') {
+    encryptionOverride = optionsOrEncryptionOverride;
+  } else if (typeof optionsOrEncryptionOverride === 'object') {
+    options = optionsOrEncryptionOverride;
+    encryptionOverride = options.encryptionOverride || 'auto';
+  }
 
   // Smart Upload Selector: Pass encryption override to backend
   // Backend expects: AUTO, FORCE_USER, FORCE_NONE
   if (encryptionOverride && encryptionOverride !== 'auto') {
     const backendValue = encryptionOverride === 'force' ? 'FORCE_USER' : 'FORCE_NONE';
     form.append('encryption_override', backendValue);
+  }
+
+  // Pass encryption password if provided (for FORCE_USER mode)
+  if (options.encryptionPassword) {
+    form.append('encryption_password', options.encryptionPassword);
   }
 
   const headers = authHeaders();

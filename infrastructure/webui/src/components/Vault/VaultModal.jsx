@@ -1,9 +1,16 @@
-import { useState, useCallback } from "react";
-import { Lock, Unlock, Shield, AlertTriangle, Key, Download, Copy, Check } from "lucide-react";
-import { generateSalt, deriveKey, generateRecoveryKey, arrayBufferToBase64 } from "../../lib/crypto";
+import { useState } from "react";
+import { Lock, AlertTriangle, Shield, Copy, Download, Check } from "lucide-react";
+import { generateRecoveryKey } from "../../lib/crypto"; // Keep only recovery key gen
 
-export function VaultModal({ isOpen, onClose, onUnlock, onSetup }) {
+export function VaultModal({ isOpen, onClose, onUnlock, onSetup, hasVault }) {
     const [mode, setMode] = useState("unlock"); // unlock, setup, recovery
+
+    // Reset mode based on vault existence when opening
+    if (isOpen && mode === "unlock" && !hasVault) {
+        setMode("setup");
+    } else if (isOpen && mode === "setup" && hasVault) {
+        setMode("unlock");
+    }
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -20,16 +27,6 @@ export function VaultModal({ isOpen, onClose, onUnlock, onSetup }) {
         setError("");
 
         try {
-            // For unlock, we need the stored SALT from metadata
-            // But since we are "Zero Knowledge", where is the salt stored?
-            // Usually publicly on the server alongside the vault/user profile.
-            // For this implementation, we assume a "vault.meta" file exists in the vault root
-            // Or we fetch it from a specific endpoint.
-
-            // MOCK: Fetch salt from localStorage or assume constant for MVP demo
-            // In production: await api.get('/api/v1/vault/meta') 
-            // User must provide salt handling logic in onUnlock callback
-
             await onUnlock(password);
             onClose();
         } catch (err) {
@@ -41,6 +38,7 @@ export function VaultModal({ isOpen, onClose, onUnlock, onSetup }) {
 
     const handleSetupStep1 = async (e) => {
         e.preventDefault();
+
         if (password !== confirmPassword) {
             setError("Passwörter stimmen nicht überein");
             return;
@@ -61,20 +59,11 @@ export function VaultModal({ isOpen, onClose, onUnlock, onSetup }) {
         setLoading(true);
 
         try {
-            // Derive initial key
-            const salt = generateSalt();
-            const key = await deriveKey(password, salt);
-
-            // Pass back to parent to save salt/metadata
-            await onSetup({
-                key,
-                salt: arrayBufferToBase64(salt),
-                recoveryKeyHash: "TODO: Hash of recovery key" // Server stores hash to verify recovery
-            });
-
+            // Pass password directly to backend setup
+            await onSetup(password);
             onClose();
         } catch (err) {
-            setError("Setup failed: " + err.message);
+            setError("Setup failed: " + (err.message || "Server Error"));
         } finally {
             setLoading(false);
         }
