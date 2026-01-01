@@ -224,6 +224,10 @@ func main() {
 	archiveService := services.NewArchiveService(logger)
 	logger.Info("ArchiveService initialized")
 
+	// Initialize ContentDeliveryService (Centralized Streaming Logic)
+	contentDeliveryService := services.NewContentDeliveryService(storageService, encryptionService, logger)
+	logger.Info("ContentDeliveryService initialized")
+
 	// Initialize AIAgentService (Centralized AI Logic)
 	aiAgentService := services.NewAIAgentService(logger, honeyfileService, cfg.InternalAPISecret)
 	logger.Info("AIAgentService initialized")
@@ -462,7 +466,7 @@ func main() {
 
 		// ==== PHASE 4: Smart Download (Hybrid Streaming) ====
 		// X-Accel-Redirect for unencrypted, streaming decrypt for encrypted
-		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, encryptionService, logger))
+		storageV1.GET("/smart-download", handlers.SmartDownloadHandler(storageService, honeyfileService, contentDeliveryService, logger))
 		storageV1.GET("/download-zip", handlers.StorageDownloadZipHandler(storageService, logger))
 		storageV1.POST("/batch-download", handlers.StorageBatchDownloadHandler(storageService, logger))
 		storageV1.DELETE("/delete", handlers.StorageDeleteHandler(storageService, aiAgentService, logger))
