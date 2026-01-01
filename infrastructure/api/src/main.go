@@ -21,6 +21,7 @@ import (
 	"github.com/nas-ai/api/src/repository"
 	"github.com/nas-ai/api/src/scheduler"
 	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/storage"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 
@@ -131,10 +132,6 @@ func main() {
 	passwordService := services.NewPasswordService()
 	tokenService := services.NewTokenService(redis, logger)
 	emailService := services.NewEmailService(cfg, logger)
-	storageService, err := services.NewStorageService("/mnt/data", logger)
-	if err != nil {
-		logger.WithError(err).Fatal("Failed to initialize storage service")
-	}
 	backupService, err := services.NewBackupService("/mnt/data", cfg.BackupStoragePath, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialize backup service")
@@ -158,6 +155,16 @@ func main() {
 	}
 	encryptionService := services.NewEncryptionService(vaultPath, logger)
 	logger.WithField("vaultPath", vaultPath).Info("Encryption service initialized")
+
+	// Initialize Storage Manager (Orchestrator)
+	localStore, err := storage.NewLocalStore("/mnt/data")
+	if err != nil {
+		logger.WithError(err).Fatal("Failed to initialize local store")
+	}
+	fileRepo := repository.NewFileRepository(dbx, logger)
+
+	// Variable name 'storageService' kept for compatibility with existing handlers
+	storageService := services.NewStorageManager(localStore, encryptionService, fileRepo, logger)
 
 	// Initialize encrypted storage service for /media/frnd14/DEMO
 	// Files stored here are encrypted - only visible via web UI when vault is unlocked

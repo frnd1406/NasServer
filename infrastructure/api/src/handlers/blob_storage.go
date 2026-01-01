@@ -25,13 +25,13 @@ type UploadSession struct {
 
 // BlobStorageHandler manages chunked encrypted uploads
 type BlobStorageHandler struct {
-	storage  *services.StorageService
+	storage  *services.StorageManager
 	sessions map[string]*UploadSession
 	mu       sync.RWMutex
 	logger   *logrus.Logger
 }
 
-func NewBlobStorageHandler(storage *services.StorageService, logger *logrus.Logger) *BlobStorageHandler {
+func NewBlobStorageHandler(storage *services.StorageManager, logger *logrus.Logger) *BlobStorageHandler {
 	return &BlobStorageHandler{
 		storage:  storage,
 		sessions: make(map[string]*UploadSession),

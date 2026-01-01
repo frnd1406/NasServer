@@ -15,7 +15,7 @@ import (
 // EncryptedStorageService wraps StorageService to provide transparent encryption/decryption
 // It intercepts Save/Open operations to encrypt files before storage and decrypt on retrieval
 type EncryptedStorageService struct {
-	storage    *StorageService
+	storage    *StorageManager
 	encryption *EncryptionService
 	logger     *logrus.Logger
 	// encryptedBasePath is the directory where encrypted files are stored
@@ -25,7 +25,7 @@ type EncryptedStorageService struct {
 
 // NewEncryptedStorageService creates a new encrypted storage wrapper
 func NewEncryptedStorageService(
-	storage *StorageService,
+	storage *StorageManager,
 	encryption *EncryptionService,
 	encryptedBasePath string,
 	logger *logrus.Logger,
@@ -249,7 +249,7 @@ func (e *EncryptedStorageService) SetEncryptedBasePath(path string) error {
 }
 
 // GetUnderlyingStorage returns the wrapped storage service for non-encrypted operations
-func (e *EncryptedStorageService) GetUnderlyingStorage() *StorageService {
+func (e *EncryptedStorageService) GetUnderlyingStorage() *StorageManager {
 	return e.storage
 }
 
