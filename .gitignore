@@ -1,14 +1,29 @@
-# Secrets & Credentials (Added 2025-11-14 - Secrets Rotation)
+# ========================
+# SECURITY: Environment Files (CRITICAL!)
+# ========================
+# Block ALL .env variants - NEVER commit secrets!
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+**/**.env
+
+# Allow templates/examples ONLY
+!.env.template
+!.env.example
+!*.template
+!*.example
+
+# Other Secrets & Credentials
 **/secrets.txt
 **/*.key
 **/*token*.txt
-**/.env.local
-**/.env
 **/credentials.json
 **/vault-keys.json
 **/init-keys.json
 **/config.yaml
-infrastructure/api/.env
+infrastructure/api/bin/
 infrastructure/api/bin/
 **/.gocache/
 **/.cache/
