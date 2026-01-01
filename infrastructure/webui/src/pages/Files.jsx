@@ -100,6 +100,9 @@ export default function Files({ initialPath = '/' }) {
   const [showTrash, setShowTrash] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
 
+  // Smart Upload Selector - encryption override mode
+  const [encryptionMode, setEncryptionMode] = useState('auto');
+
   // Context menu state
   const [contextMenu, setContextMenu] = useState({ isOpen: false, position: { x: 0, y: 0 }, item: null });
 
@@ -195,10 +198,10 @@ export default function Files({ initialPath = '/' }) {
   const handleFileInputChange = useCallback((e) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) {
-      uploadFiles(Array.from(selectedFiles), path);
+      uploadFiles(Array.from(selectedFiles), path, { encryptionMode });
     }
     e.target.value = '';
-  }, [uploadFiles, path]);
+  }, [uploadFiles, path, encryptionMode]);
 
   const handleToggleTrash = useCallback(() => {
     setShowTrash(!showTrash);
@@ -311,6 +314,8 @@ export default function Files({ initialPath = '/' }) {
               viewMode={viewMode}
               showTrash={showTrash}
               uploading={uploading}
+              encryptionMode={encryptionMode}
+              onModeChange={setEncryptionMode}
               onNavigate={navigateTo}
               onUploadClick={handleUploadClick}
               onNewFolder={() => setShowNewFolderModal(true)}

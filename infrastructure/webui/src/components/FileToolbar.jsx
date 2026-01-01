@@ -10,7 +10,9 @@ import {
     Grid3x3,
     Trash,
     Loader2,
-    Shield
+    Shield,
+    Lock,
+    Unlock
 } from 'lucide-react';
 
 export function FileToolbar({
@@ -20,6 +22,8 @@ export function FileToolbar({
     viewMode,
     showTrash,
     uploading,
+    encryptionMode = 'auto',
+    onModeChange,
     onNavigate,
     onUploadClick,
     onNewFolder,
@@ -27,6 +31,19 @@ export function FileToolbar({
     onViewModeChange,
     onToggleTrash,
 }) {
+    // Encryption mode definitions
+    const modes = {
+        auto: { icon: Shield, color: 'text-slate-400', bgColor: 'bg-slate-500/10 border-slate-500/20', label: 'Auto' },
+        force: { icon: Lock, color: 'text-rose-400', bgColor: 'bg-rose-500/10 border-rose-500/20', label: 'Sicher' },
+        none: { icon: Unlock, color: 'text-amber-400', bgColor: 'bg-amber-500/10 border-amber-500/20', label: 'Offen' }
+    };
+    const current = modes[encryptionMode] || modes.auto;
+    const ModeIcon = current.icon;
+
+    const cycleMode = () => {
+        const next = encryptionMode === 'auto' ? 'force' : encryptionMode === 'force' ? 'none' : 'auto';
+        onModeChange?.(next);
+    };
     return (
         <div className="p-4 border-b border-white/5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -65,13 +82,15 @@ export function FileToolbar({
 
                 {/* Right: Actions */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* Policy Indicator */}
-                    <div className="mr-2 group relative flex items-center justify-center w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 cursor-help">
-                        <Shield size={16} />
-                        <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 p-2 bg-slate-900 border border-white/10 rounded-lg text-xs text-slate-300 shadow-xl z-10 text-center">
-                            Encryption managed by System Policies
-                        </div>
-                    </div>
+                    {/* Smart Upload Selector - Encryption Mode Toggle */}
+                    <button
+                        onClick={cycleMode}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${current.color} ${current.bgColor} hover:opacity-80 transition-all`}
+                        title={`Verschlüsselung: ${current.label}\n\nAuto = System entscheidet\nSicher = Immer verschlüsseln\nOffen = Nie verschlüsseln`}
+                    >
+                        <ModeIcon size={16} />
+                        <span className="hidden sm:inline text-sm font-medium">{current.label}</span>
+                    </button>
 
                     {/* Upload Button */}
                     <button

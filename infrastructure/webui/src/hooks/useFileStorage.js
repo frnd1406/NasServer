@@ -74,9 +74,11 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
         }
     }, []);
 
-    // Upload files
-    const uploadFiles = useCallback(async (filesToUpload, currentPath) => {
+    // Upload files with optional encryption mode override
+    const uploadFiles = useCallback(async (filesToUpload, currentPath, options = {}) => {
         if (!filesToUpload || filesToUpload.length === 0) return;
+
+        const { encryptionMode = 'auto' } = options;
 
         setUploading(true);
         setError('');
@@ -168,8 +170,8 @@ export function useFileStorage(initialPath = '/', vaultKey = null) {
 
                 } else {
                     // === STANDARD UPLOAD (Via API) ===
-                    // Now supports encryptionMode (Hybrid Encryption)
-                    await apiUploadFile(file, currentPath);
+                    // Pass encryption mode override to API
+                    await apiUploadFile(file, currentPath, encryptionMode);
                 }
             }
 

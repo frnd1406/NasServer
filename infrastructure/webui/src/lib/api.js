@@ -574,16 +574,20 @@ export async function getSystemCapabilities(fileSizeBytes) {
  * Upload a single file
  * @param {File} file - The file to upload
  * @param {string} path - Target directory path
- * @param {string} encryptionMode - 'NONE' or 'USER'
+ * @param {string} encryptionOverride - 'auto', 'force', or 'none'
  * @returns {Promise<any>}
  */
-export async function uploadFile(file, path) {
+export async function uploadFile(file, path, encryptionOverride = 'auto') {
   const form = new FormData();
   form.append('file', file);
   form.append('path', path);
 
-  // Encryption mode is now handled by the backend based on global policies
-
+  // Smart Upload Selector: Pass encryption override to backend
+  // Backend expects: AUTO, FORCE_USER, FORCE_NONE
+  if (encryptionOverride && encryptionOverride !== 'auto') {
+    const backendValue = encryptionOverride === 'force' ? 'FORCE_USER' : 'FORCE_NONE';
+    form.append('encryption_override', backendValue);
+  }
 
   const headers = authHeaders();
   // Delete Content-Type to let browser set boundary for FormData
