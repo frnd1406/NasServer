@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
-	"github.com/nas-ai/api/src/services/storage"
+
+	"github.com/nas-ai/api/src/drivers/storage"
+	"github.com/nas-ai/api/src/services/content"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,7 +32,7 @@ func TestSmartDownloadHandler_UnencryptedFile(t *testing.T) {
 	// Create storage service
 	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
-	storage := services.NewStorageManager(store, nil, nil, logger)
+	storage := content.NewStorageManager(store, nil, nil, logger)
 
 	// Create test file
 	testContent := []byte("Hello, this is test content for download!")
@@ -41,8 +43,8 @@ func TestSmartDownloadHandler_UnencryptedFile(t *testing.T) {
 	// Setup router
 	router := gin.New()
 	// Create delivery service
-	encryptionSvc := services.NewEncryptionService("", logger) // Mock/Empty encryption service
-	deliverySvc := services.NewContentDeliveryService(storage, encryptionSvc, logger)
+	encryptionSvc := security.NewEncryptionService("", logger) // Mock/Empty encryption service
+	deliverySvc := content.NewContentDeliveryService(storage, encryptionSvc, logger)
 
 	// Setup router
 
@@ -73,7 +75,7 @@ func TestSmartDownloadHandler_EncryptedFile(t *testing.T) {
 	// Create storage service
 	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
-	storage := services.NewStorageManager(store, nil, nil, logger)
+	storage := content.NewStorageManager(store, nil, nil, logger)
 
 	// Create and encrypt test file
 	password := "testpassword123"
@@ -84,15 +86,15 @@ func TestSmartDownloadHandler_EncryptedFile(t *testing.T) {
 	encFile, err := os.Create(encryptedPath)
 	require.NoError(t, err)
 
-	err = services.EncryptStream(password, bytes.NewReader(testContent), encFile)
+	err = security.EncryptStream(password, bytes.NewReader(testContent), encFile)
 	encFile.Close()
 	require.NoError(t, err)
 
 	// Setup router
 	router := gin.New()
 	// Create delivery service
-	encryptionSvc := services.NewEncryptionService("", logger)
-	deliverySvc := services.NewContentDeliveryService(storage, encryptionSvc, logger)
+	encryptionSvc := security.NewEncryptionService("", logger)
+	deliverySvc := content.NewContentDeliveryService(storage, encryptionSvc, logger)
 
 	// Setup router
 
@@ -135,7 +137,7 @@ func TestSmartDownloadHandler_RangeRequest(t *testing.T) {
 	// Create storage service
 	store, err := storage.NewLocalStore(tmpDir)
 	require.NoError(t, err)
-	storage := services.NewStorageManager(store, nil, nil, logger)
+	storage := content.NewStorageManager(store, nil, nil, logger)
 
 	// Create test file with known content
 	testContent := make([]byte, 1000)
@@ -149,8 +151,8 @@ func TestSmartDownloadHandler_RangeRequest(t *testing.T) {
 	// Setup router
 	router := gin.New()
 	// Create delivery service
-	encryptionSvc := services.NewEncryptionService("", logger)
-	deliverySvc := services.NewContentDeliveryService(storage, encryptionSvc, logger)
+	encryptionSvc := security.NewEncryptionService("", logger)
+	deliverySvc := content.NewContentDeliveryService(storage, encryptionSvc, logger)
 
 	// Setup router
 

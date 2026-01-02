@@ -9,13 +9,13 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/nas-ai/api/src/config"
-	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/operations"
 )
 
 var (
 	mu          sync.Mutex
 	cronRunner  *cron.Cron
-	backupSvc   *services.BackupService
+	backupSvc   *operations.BackupService
 	cfgRef      *config.Config
 	logger      *logrus.Logger
 	cronParser  = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -23,7 +23,7 @@ var (
 )
 
 // StartBackupScheduler starts the cron job that periodically creates and prunes backups.
-func StartBackupScheduler(service *services.BackupService, cfg *config.Config) error {
+func StartBackupScheduler(service *operations.BackupService, cfg *config.Config) error {
 	if service == nil {
 		return fmt.Errorf("backup service is required")
 	}
@@ -92,7 +92,7 @@ func startLocked() error {
 	return nil
 }
 
-func runBackupJob(svc *services.BackupService, cfg *config.Config, log *logrus.Logger) {
+func runBackupJob(svc *operations.BackupService, cfg *config.Config, log *logrus.Logger) {
 	if svc == nil || cfg == nil {
 		return
 	}

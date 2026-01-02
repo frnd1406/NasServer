@@ -7,9 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nas-ai/api/src/services"
-
 	"github.com/gin-gonic/gin"
+	"github.com/nas-ai/api/src/services/operations"
 )
 
 // ==============================================================================
@@ -26,12 +25,12 @@ import (
 
 // CapabilitiesResponse is the JSON response for system capabilities
 type CapabilitiesResponse struct {
-	SystemModel         string                             `json:"system_model"`
-	EncryptionSpeedMBps float64                            `json:"encryption_speed_mbps"`
-	CPUCores            int                                `json:"cpu_cores"`
-	Algorithm           string                             `json:"algorithm"`
-	Recommendation      *services.EncryptionRecommendation `json:"recommendation,omitempty"`
-	BenchmarkReady      bool                               `json:"benchmark_ready"`
+	SystemModel         string                               `json:"system_model"`
+	EncryptionSpeedMBps float64                              `json:"encryption_speed_mbps"`
+	CPUCores            int                                  `json:"cpu_cores"`
+	Algorithm           string                               `json:"algorithm"`
+	Recommendation      *operations.EncryptionRecommendation `json:"recommendation,omitempty"`
+	BenchmarkReady      bool                                 `json:"benchmark_ready"`
 }
 
 // detectSystemModel attempts to detect the system model (e.g., Raspberry Pi)
@@ -83,7 +82,7 @@ func detectSystemModel() string {
 // @Param file_size query int false "File size in bytes to estimate encryption time"
 // @Success 200 {object} CapabilitiesResponse "System capabilities"
 // @Router /api/system/capabilities [get]
-func Capabilities(benchmarkService *services.BenchmarkService) gin.HandlerFunc {
+func Capabilities(benchmarkService *operations.BenchmarkService) gin.HandlerFunc {
 	// Pre-detect system model at handler creation time
 	systemModel := detectSystemModel()
 

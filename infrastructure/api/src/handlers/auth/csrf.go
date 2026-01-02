@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/middleware"
+	"github.com/nas-ai/api/src/middleware/logic"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +21,7 @@ func GetCSRFToken(redis *database.RedisClient, logger *logrus.Logger) gin.Handle
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
-		sessionID, err := middleware.EnsureCSRFSession(c)
+		sessionID, err := logic.EnsureCSRFSession(c)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
@@ -37,7 +37,7 @@ func GetCSRFToken(redis *database.RedisClient, logger *logrus.Logger) gin.Handle
 			return
 		}
 
-		token, err := middleware.GenerateCSRFToken(redis, sessionID)
+		token, err := logic.GenerateCSRFToken(redis, sessionID)
 		if err != nil {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
@@ -55,7 +55,7 @@ func GetCSRFToken(redis *database.RedisClient, logger *logrus.Logger) gin.Handle
 			return
 		}
 
-		middleware.SetCSRFCookie(c, sessionID)
+		logic.SetCSRFCookie(c, sessionID)
 
 		c.JSON(http.StatusOK, gin.H{
 			"csrf_token": token,

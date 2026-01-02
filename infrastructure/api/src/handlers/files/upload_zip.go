@@ -8,12 +8,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/content"
 )
 
 // StorageUploadZipHandler handles the upload and extraction of ZIP files
-func StorageUploadZipHandler(storageService *services.StorageManager, archiveService *services.ArchiveService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadZipHandler(storageService *content.StorageManager, archiveService *content.ArchiveService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Initialize logger with context
 		requestID := c.GetString("RequestId")

@@ -1,13 +1,15 @@
 package auth
 
 import (
-	"net/http"
+		"github.com/nas-ai/api/src/repository/auth"
+"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/middleware"
-	"github.com/nas-ai/api/src/repository"
-	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/middleware/logic"
+
+
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 )
 
@@ -37,9 +39,9 @@ type LoginResponse struct {
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /auth/login [post]
 func LoginHandler(
-	userRepo *repository.UserRepository,
-	jwtService *services.JWTService,
-	passwordService *services.PasswordService,
+	userRepo *auth_repo.UserRepository,
+	jwtService *security.JWTService,
+	passwordService *security.PasswordService,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
@@ -113,7 +115,7 @@ func LoginHandler(
 		}
 
 		// Generate new session-scoped CSRF token (rotate session to avoid fixation)
-		sessionID, err := middleware.EnsureCSRFSession(c)
+		sessionID, err := logic.EnsureCSRFSession(c)
 		if err != nil {
 			logger.WithError(err).Error("Failed to create CSRF session")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
@@ -136,13 +138,13 @@ func LoginHandler(
 		}
 
 		// Generate CSRF token
-		csrfToken, err := middleware.GenerateCSRFToken(redis, sessionID)
+		csrfToken, err := logic.GenerateCSRFToken(redis, sessionID)
 		if err != nil {
 			logger.WithError(err).Error("Failed to generate CSRF token")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
-		middleware.SetCSRFCookie(c, sessionID)
+		logic.SetCSRFCookie(c, sessionID)
 
 		// Audit log - SUCCESS
 		logger.WithFields(logrus.Fields{

@@ -12,16 +12,27 @@ import (
 	"syscall"
 	"time"
 
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
+	files_repo "github.com/nas-ai/api/src/repository/files"
+	settings_repo "github.com/nas-ai/api/src/repository/settings"
+	system_repo "github.com/nas-ai/api/src/repository/system"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
+	"github.com/nas-ai/api/src/drivers/storage"
 	"github.com/nas-ai/api/src/handlers/files"
-	"github.com/nas-ai/api/src/middleware"
-	"github.com/nas-ai/api/src/repository"
+	"github.com/nas-ai/api/src/middleware/core"
+	"github.com/nas-ai/api/src/middleware/logic"
+
 	"github.com/nas-ai/api/src/scheduler"
-	"github.com/nas-ai/api/src/services"
-	"github.com/nas-ai/api/src/services/storage"
+	"github.com/nas-ai/api/src/services/common"
+	servicesConfig "github.com/nas-ai/api/src/services/config"
+	"github.com/nas-ai/api/src/services/content"
+	"github.com/nas-ai/api/src/services/intelligence"
+	"github.com/nas-ai/api/src/services/operations"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
@@ -36,36 +47,36 @@ type Server struct {
 	dbx    *sqlx.DB
 
 	// Repositories
-	userRepo          *repository.UserRepository
-	settingsRepo      *repository.SystemSettingsRepository
-	systemMetricsRepo *repository.SystemMetricsRepository
-	systemAlertsRepo  *repository.SystemAlertsRepository
-	monitoringRepo    *repository.MonitoringRepository
-	embeddingsRepo    *repository.FileEmbeddingsRepository
-	honeyfileRepo     *repository.HoneyfileRepository
-	fileRepo          *repository.FileRepository
+	userRepo          *auth_repo.UserRepository
+	settingsRepo      *settings_repo.SystemSettingsRepository
+	systemMetricsRepo *system_repo.SystemMetricsRepository
+	systemAlertsRepo  *system_repo.SystemAlertsRepository
+	monitoringRepo    *system_repo.MonitoringRepository
+	embeddingsRepo    *files_repo.FileEmbeddingsRepository
+	honeyfileRepo     *files_repo.HoneyfileRepository
+	fileRepo          *files_repo.FileRepository
 
 	// Services
-	jwtService              *services.JWTService
-	passwordService         *services.PasswordService
-	tokenService            *services.TokenService
-	emailService            *services.EmailService
-	backupService           *services.BackupService
-	settingsService         *services.SettingsService
-	encryptionService       *services.EncryptionService
-	storageService          *services.StorageManager
-	encryptedStorageService *services.EncryptedStorageService
-	secureAIFeeder          *services.SecureAIFeeder
+	jwtService              *security.JWTService
+	passwordService         *security.PasswordService
+	tokenService            *security.TokenService
+	emailService            *operations.EmailService
+	backupService           *operations.BackupService
+	settingsService         *servicesConfig.SettingsService
+	encryptionService       *security.EncryptionService
+	storageService          *content.StorageManager
+	encryptedStorageService *content.EncryptedStorageService
+	secureAIFeeder          *intelligence.SecureAIFeeder
 	aiHTTPClient            *http.Client
-	jobService              *services.JobService
-	honeyfileService        *services.HoneyfileService
-	encryptionPolicyService *services.EncryptionPolicyService
-	archiveService          *services.ArchiveService
-	contentDeliveryService  *services.ContentDeliveryService
-	aiAgentService          *services.AIAgentService
-	alertService            *services.AlertService
-	benchmarkService        *services.BenchmarkService
-	consistencyService      *services.ConsistencyService
+	jobService              *operations.JobService
+	honeyfileService        *content.HoneyfileService
+	encryptionPolicyService *security.EncryptionPolicyService
+	archiveService          *content.ArchiveService
+	contentDeliveryService  *content.ContentDeliveryService
+	aiAgentService          *intelligence.AIAgentService
+	alertService            *operations.AlertService
+	benchmarkService        *operations.BenchmarkService
+	consistencyService      *operations.ConsistencyService
 
 	// Handlers
 	blobStorageHandler *files.BlobStorageHandler
@@ -125,24 +136,24 @@ func (s *Server) initDatabase() error {
 func (s *Server) initRepositories() error {
 	var err error
 
-	s.settingsRepo = repository.NewSystemSettingsRepository(s.dbx, s.logger)
+	s.settingsRepo = settings_repo.NewSystemSettingsRepository(s.dbx, s.logger)
 	if err = s.settingsRepo.EnsureTable(context.Background()); err != nil {
 		return fmt.Errorf("settings table init failed: %w", err)
 	}
 	s.applyPersistedBackupSettings()
 
-	s.userRepo = repository.NewUserRepository(s.db, s.logger)
-	s.systemMetricsRepo = repository.NewSystemMetricsRepository(s.dbx, s.logger)
-	s.systemAlertsRepo = repository.NewSystemAlertsRepository(s.dbx, s.logger)
-	s.monitoringRepo = repository.NewMonitoringRepository(s.db, s.logger)
-	s.embeddingsRepo = repository.NewFileEmbeddingsRepository(s.dbx, s.logger)
-	s.honeyfileRepo = repository.NewHoneyfileRepository(s.dbx, s.logger)
+	s.userRepo = auth_repo.NewUserRepository(s.db, s.logger)
+	s.systemMetricsRepo = system_repo.NewSystemMetricsRepository(s.dbx, s.logger)
+	s.systemAlertsRepo = system_repo.NewSystemAlertsRepository(s.dbx, s.logger)
+	s.monitoringRepo = system_repo.NewMonitoringRepository(s.db, s.logger)
+	s.embeddingsRepo = files_repo.NewFileEmbeddingsRepository(s.dbx, s.logger)
+	s.honeyfileRepo = files_repo.NewHoneyfileRepository(s.dbx, s.logger)
 
 	if err = s.honeyfileRepo.EnsureTable(context.Background()); err != nil {
 		return fmt.Errorf("honeyfiles table init failed: %w", err)
 	}
 
-	s.fileRepo = repository.NewFileRepository(s.dbx, s.logger)
+	s.fileRepo = files_repo.NewFileRepository(s.dbx, s.logger)
 
 	return nil
 }
@@ -152,16 +163,16 @@ func (s *Server) initServices() error {
 	var err error
 
 	// Auth Services
-	s.jwtService, err = services.NewJWTService(s.cfg, s.logger)
+	s.jwtService, err = security.NewJWTService(s.cfg, s.logger)
 	if err != nil {
 		return fmt.Errorf("JWT service init failed: %w", err)
 	}
-	s.passwordService = services.NewPasswordService()
-	s.tokenService = services.NewTokenService(s.redis, s.logger)
-	s.emailService = services.NewEmailService(s.cfg, s.logger)
+	s.passwordService = security.NewPasswordService()
+	s.tokenService = security.NewTokenService(s.redis, s.logger)
+	s.emailService = operations.NewEmailService(s.cfg, s.logger)
 
 	// Backup Service
-	s.backupService, err = services.NewBackupService("/mnt/data", s.cfg.BackupStoragePath, s.logger)
+	s.backupService, err = operations.NewBackupService("/mnt/data", s.cfg.BackupStoragePath, s.logger)
 	if err != nil {
 		return fmt.Errorf("backup service init failed: %w", err)
 	}
@@ -170,7 +181,7 @@ func (s *Server) initServices() error {
 	onRestartScheduler := func() error {
 		return scheduler.RestartScheduler()
 	}
-	s.settingsService = services.NewSettingsService(s.cfg, s.settingsRepo, s.backupService, onRestartScheduler, s.logger)
+	s.settingsService = servicesConfig.NewSettingsService(s.cfg, s.settingsRepo, s.backupService, onRestartScheduler, s.logger)
 	s.logger.Info("SettingsService initialized")
 
 	// Encryption Service (Zero-Knowledge)
@@ -181,7 +192,7 @@ func (s *Server) initServices() error {
 			s.logger.Warn("⚠️  Vault persistence enabled: Keys survive restarts (security trade-off)")
 		}
 	}
-	s.encryptionService = services.NewEncryptionService(vaultPath, s.logger)
+	s.encryptionService = security.NewEncryptionService(vaultPath, s.logger)
 	s.logger.WithField("vaultPath", vaultPath).Info("Encryption service initialized")
 
 	// Storage Services
@@ -189,11 +200,11 @@ func (s *Server) initServices() error {
 	if err != nil {
 		return fmt.Errorf("local store init failed: %w", err)
 	}
-	s.storageService = services.NewStorageManager(localStore, s.encryptionService, s.fileRepo, s.logger)
+	s.storageService = content.NewStorageManager(localStore, s.encryptionService, s.fileRepo, s.logger)
 
 	// Encrypted Storage (optional)
 	encryptedStoragePath := "/media/frnd14/DEMO"
-	s.encryptedStorageService, err = services.NewEncryptedStorageService(
+	s.encryptedStorageService, err = content.NewEncryptedStorageService(
 		s.storageService,
 		s.encryptionService,
 		encryptedStoragePath,
@@ -207,7 +218,7 @@ func (s *Server) initServices() error {
 
 	// AI Services
 	if s.encryptionService != nil {
-		s.secureAIFeeder = services.NewSecureAIFeeder(
+		s.secureAIFeeder = intelligence.NewSecureAIFeeder(
 			s.encryptionService,
 			s.cfg.AIServiceURL,
 			s.cfg.InternalAPISecret,
@@ -216,37 +227,37 @@ func (s *Server) initServices() error {
 		s.logger.Info("SecureAIFeeder initialized")
 	}
 
-	s.aiHTTPClient = services.NewSecureHTTPClient(s.cfg.InternalAPISecret, 15*time.Second)
-	s.jobService = services.NewJobService(s.redis, s.logger)
+	s.aiHTTPClient = common.NewSecureHTTPClient(s.cfg.InternalAPISecret, 15*time.Second)
+	s.jobService = operations.NewJobService(s.redis, s.logger)
 	if err := s.jobService.EnsureConsumerGroup(context.Background()); err != nil {
 		s.logger.WithError(err).Warn("Failed to ensure AI job consumer group (non-fatal)")
 	}
 	s.logger.Info("JobService initialized")
 
 	// Security Services
-	s.honeyfileService = services.NewHoneyfileService(s.honeyfileRepo, s.encryptionService, s.logger)
+	s.honeyfileService = content.NewHoneyfileService(s.honeyfileRepo, s.encryptionService, s.logger)
 	s.logger.Info("HoneyfileService initialized")
 
-	s.encryptionPolicyService = services.NewEncryptionPolicyService()
+	s.encryptionPolicyService = security.NewEncryptionPolicyService()
 	s.logger.Info("EncryptionPolicyService initialized")
 
 	// Utility Services
-	s.archiveService = services.NewArchiveService(s.logger)
+	s.archiveService = content.NewArchiveService(s.logger)
 	s.logger.Info("ArchiveService initialized")
 
-	s.contentDeliveryService = services.NewContentDeliveryService(s.storageService, s.encryptionService, s.logger)
+	s.contentDeliveryService = content.NewContentDeliveryService(s.storageService, s.encryptionService, s.logger)
 	s.logger.Info("ContentDeliveryService initialized")
 
-	s.aiAgentService = services.NewAIAgentService(s.logger, s.honeyfileService, s.cfg.InternalAPISecret)
+	s.aiAgentService = intelligence.NewAIAgentService(s.logger, s.honeyfileService, s.cfg.InternalAPISecret)
 	s.logger.Info("AIAgentService initialized")
 
-	s.alertService = services.NewAlertService(s.emailService, s.cfg, s.logger)
+	s.alertService = operations.NewAlertService(s.emailService, s.cfg, s.logger)
 	s.logger.Info("AlertService initialized")
 
-	s.benchmarkService = services.NewBenchmarkService(s.logger)
+	s.benchmarkService = operations.NewBenchmarkService(s.logger)
 
 	// Consistency Service
-	s.consistencyService = services.NewConsistencyService(
+	s.consistencyService = operations.NewConsistencyService(
 		s.dbx,
 		s.embeddingsRepo,
 		"/mnt/data",
@@ -278,14 +289,14 @@ func (s *Server) initRouter() {
 	s.router = gin.New()
 
 	// Middleware chain (Onion Principle)
-	rateLimiter := middleware.NewRateLimiter(s.cfg)
+	rateLimiter := logic.NewRateLimiter(s.cfg)
 	s.router.Use(
-		middleware.PanicRecovery(s.logger),
-		middleware.RequestID(),
-		middleware.GinSecureHeaders(),
-		middleware.CORS(s.cfg, s.logger),
+		core.PanicRecovery(s.logger),
+		core.RequestID(),
+		core.GinSecureHeaders(),
+		core.CORS(s.cfg, s.logger),
 		rateLimiter.Middleware(),
-		middleware.AuditLogger(s.logger),
+		core.AuditLogger(s.logger),
 	)
 
 	// OPTIONS preflight
@@ -331,7 +342,7 @@ func (s *Server) startBackgroundWorkers() {
 
 // Run starts the HTTP server and waits for shutdown signal
 func (s *Server) Run() error {
-	secureHandler := middleware.SecureHeaders(s.router)
+	secureHandler := core.SecureHeaders(s.router)
 
 	srv := &http.Server{
 		Addr:           "0.0.0.0:" + s.cfg.Port,
@@ -406,7 +417,7 @@ func (s *Server) applyPersistedBackupSettings() {
 		return
 	}
 
-	if schedule, ok := settings[repository.SystemSettingBackupSchedule]; ok {
+	if schedule, ok := settings[settings_repo.SystemSettingBackupSchedule]; ok {
 		sc := strings.TrimSpace(schedule)
 		if sc != "" {
 			if _, err := parser.Parse(sc); err != nil {
@@ -417,7 +428,7 @@ func (s *Server) applyPersistedBackupSettings() {
 		}
 	}
 
-	if retentionStr, ok := settings[repository.SystemSettingBackupRetention]; ok {
+	if retentionStr, ok := settings[settings_repo.SystemSettingBackupRetention]; ok {
 		if n, err := strconv.Atoi(retentionStr); err == nil && n > 0 {
 			s.cfg.BackupRetentionCount = n
 		} else if err != nil {
@@ -425,7 +436,7 @@ func (s *Server) applyPersistedBackupSettings() {
 		}
 	}
 
-	if path, ok := settings[repository.SystemSettingBackupPath]; ok {
+	if path, ok := settings[settings_repo.SystemSettingBackupPath]; ok {
 		p := filepath.Clean(strings.TrimSpace(path))
 		if p != "" && p != "." && p != string(os.PathSeparator) {
 			s.cfg.BackupStoragePath = p

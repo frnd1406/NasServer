@@ -10,9 +10,9 @@ import (
 	"github.com/nas-ai/api/src/handlers/files"
 	"github.com/nas-ai/api/src/handlers/settings"
 	"github.com/nas-ai/api/src/handlers/system"
-	"github.com/nas-ai/api/src/middleware"
-	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/middleware/logic"
 
+	"github.com/nas-ai/api/src/services/common"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -42,7 +42,7 @@ func (s *Server) SetupRoutes() {
 func (s *Server) setupAuthRoutes() {
 	authGroup := s.router.Group("/auth")
 	{
-		authLimiter := middleware.NewRateLimiter(&config.Config{RateLimitPerMin: 5})
+		authLimiter := logic.NewRateLimiter(&config.Config{RateLimitPerMin: 5})
 
 		authGroup.POST("/register",
 			authLimiter.Middleware(),
@@ -54,14 +54,14 @@ func (s *Server) setupAuthRoutes() {
 		)
 		authGroup.POST("/refresh", auth.RefreshHandler(s.jwtService, s.redis, s.logger))
 		authGroup.POST("/logout",
-			middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
+			logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
 			auth.LogoutHandler(s.jwtService, s.redis, s.logger),
 		)
 
 		// Email verification
 		authGroup.POST("/verify-email", auth.VerifyEmailHandler(s.userRepo, s.tokenService, s.emailService, s.logger))
 		authGroup.POST("/resend-verification",
-			middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
+			logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
 			auth.ResendVerificationHandler(s.userRepo, s.tokenService, s.emailService, s.logger),
 		)
 
@@ -74,8 +74,8 @@ func (s *Server) setupAuthRoutes() {
 // setupAPIRoutes configures protected API endpoints
 func (s *Server) setupAPIRoutes() {
 	apiGroup := s.router.Group("/api")
-	apiGroup.Use(middleware.AuthMiddleware(s.jwtService, s.redis, s.logger))
-	apiGroup.Use(middleware.CSRFMiddleware(s.redis, s.logger))
+	apiGroup.Use(logic.AuthMiddleware(s.jwtService, s.redis, s.logger))
+	apiGroup.Use(logic.CSRFMiddleware(s.redis, s.logger))
 	{
 		apiGroup.GET("/profile", handlers.ProfileHandler(s.userRepo, s.logger))
 		apiGroup.GET("/monitoring", system.MonitoringListHandler(s.monitoringRepo, s.logger))
@@ -95,7 +95,7 @@ func (s *Server) setupV1Routes() {
 		v1.POST("/system/alerts/:id/resolve", system.SystemAlertResolveHandler(s.systemAlertsRepo, s.logger))
 
 		v1.GET("/search", ai.SearchHandler(s.db, s.cfg.AIServiceURL, s.aiHTTPClient, s.logger))
-		v1.POST("/query", ai.UnifiedQueryHandler(s.cfg.AIServiceURL, services.NewSecureHTTPClient(s.cfg.InternalAPISecret, 90*time.Second), s.jobService, s.logger))
+		v1.POST("/query", ai.UnifiedQueryHandler(s.cfg.AIServiceURL, common.NewSecureHTTPClient(s.cfg.InternalAPISecret, 90*time.Second), s.jobService, s.logger))
 		v1.GET("/jobs/:id", system.GetJobStatusHandler(s.jobService, s.logger))
 		v1.GET("/ask", ai.AskHandler(s.db, s.cfg.AIServiceURL, s.cfg.OllamaURL, s.cfg.LLMModel, nil, s.logger))
 		v1.GET("/files/content", files.FileContentHandler(s.logger))
@@ -137,8 +137,8 @@ func (s *Server) setupV1Routes() {
 	// Protected system settings
 	settingsV1 := v1.Group("/system")
 	settingsV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
 		settingsV1.GET("/settings", settings.SystemSettingsHandler(s.settingsService))
@@ -160,8 +160,8 @@ func (s *Server) setupV1Routes() {
 	// Vault uploads (chunked)
 	vaultUploadV1 := v1.Group("/vault/upload")
 	vaultUploadV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
 		vaultUploadV1.POST("/init", s.blobStorageHandler.InitUpload)
@@ -174,8 +174,8 @@ func (s *Server) setupV1Routes() {
 func (s *Server) setupStorageRoutes() {
 	storageV1 := s.router.Group("/api/v1/storage")
 	storageV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
 		storageV1.GET("/files", files.StorageListHandler(s.storageService, s.logger))
@@ -204,8 +204,8 @@ func (s *Server) setupEncryptedStorageRoutes() {
 
 	encV1 := s.router.Group("/api/v1/encrypted")
 	encV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
 		encV1.GET("/status", files.EncryptedStorageStatusHandler(s.encryptedStorageService))
@@ -221,19 +221,19 @@ func (s *Server) setupEncryptedStorageRoutes() {
 func (s *Server) setupBackupRoutes() {
 	backupV1 := s.router.Group("/api/v1/backups")
 	backupV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
 		backupV1.GET("", handlers.BackupListHandler(s.backupService, s.logger))
 		backupV1.POST("", handlers.BackupCreateHandler(s.backupService, s.cfg, s.logger))
 
 		backupV1.POST("/:id/restore",
-			middleware.AdminOnly(s.userRepo, s.logger),
+			logic.AdminOnly(s.userRepo, s.logger),
 			handlers.BackupRestoreHandler(s.backupService, s.cfg, s.logger),
 		)
 		backupV1.DELETE("/:id",
-			middleware.AdminOnly(s.userRepo, s.logger),
+			logic.AdminOnly(s.userRepo, s.logger),
 			handlers.BackupDeleteHandler(s.backupService, s.logger),
 		)
 	}
@@ -243,9 +243,9 @@ func (s *Server) setupBackupRoutes() {
 func (s *Server) setupAdminRoutes() {
 	adminV1 := s.router.Group("/api/v1/admin")
 	adminV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
-		middleware.AdminOnly(s.userRepo, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
+		logic.AdminOnly(s.userRepo, s.logger),
 	)
 	{
 		adminV1.GET("/settings", settings.GetAdminSettingsHandler(s.cfg, s.logger))
@@ -263,9 +263,9 @@ func (s *Server) setupAdminRoutes() {
 func (s *Server) setupSystemRoutes() {
 	sysV1 := s.router.Group("/api/v1/sys")
 	sysV1.Use(
-		middleware.AuthMiddleware(s.jwtService, s.redis, s.logger),
-		middleware.CSRFMiddleware(s.redis, s.logger),
-		middleware.AdminOnly(s.userRepo, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.CSRFMiddleware(s.redis, s.logger),
+		logic.AdminOnly(s.userRepo, s.logger),
 	)
 	{
 		sysV1.POST("/integrity/checkpoints", system.CreateCheckpointHandler(s.honeyfileService, s.logger))

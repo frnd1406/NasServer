@@ -6,8 +6,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/security"
 )
 
 // VaultStatusRequest is empty, just for documentation
@@ -30,7 +31,7 @@ type VaultConfigRequest struct {
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/vault/status [get]
-func VaultStatusHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
+func VaultStatusHandler(encSvc *security.EncryptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, encSvc.GetStatus())
 	}
@@ -47,7 +48,7 @@ func VaultStatusHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
 // @Router /api/v1/vault/setup [post]
-func VaultSetupHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultSetupHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req VaultSetupRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,7 +57,7 @@ func VaultSetupHandler(encSvc *services.EncryptionService, logger *logrus.Logger
 		}
 
 		if err := encSvc.Setup(req.MasterPassword); err != nil {
-			if err == services.ErrVaultAlreadySetup {
+			if err == security.ErrVaultAlreadySetup {
 				c.JSON(http.StatusConflict, gin.H{"error": "vault is already configured"})
 				return
 			}
@@ -85,7 +86,7 @@ func VaultSetupHandler(encSvc *services.EncryptionService, logger *logrus.Logger
 // @Failure 401 {object} map[string]string
 // @Failure 423 {object} map[string]string
 // @Router /api/v1/vault/unlock [post]
-func VaultUnlockHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultUnlockHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req VaultUnlockRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -95,11 +96,11 @@ func VaultUnlockHandler(encSvc *services.EncryptionService, logger *logrus.Logge
 
 		if err := encSvc.Unlock(req.MasterPassword); err != nil {
 			switch err {
-			case services.ErrVaultNotSetup:
+			case security.ErrVaultNotSetup:
 				c.JSON(http.StatusPreconditionFailed, gin.H{"error": "vault is not configured"})
-			case services.ErrAlreadyUnlocked:
+			case security.ErrAlreadyUnlocked:
 				c.JSON(http.StatusOK, gin.H{"message": "vault is already unlocked", "status": encSvc.GetStatus()})
-			case services.ErrInvalidPassword:
+			case security.ErrInvalidPassword:
 				logger.Warn("vault unlock: invalid password attempt")
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid master password"})
 			default:
@@ -125,10 +126,10 @@ func VaultUnlockHandler(encSvc *services.EncryptionService, logger *logrus.Logge
 // @Success 200 {object} map[string]interface{}
 // @Failure 423 {object} map[string]string
 // @Router /api/v1/vault/lock [post]
-func VaultLockHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultLockHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := encSvc.Lock(); err != nil {
-			if err == services.ErrAlreadyLocked {
+			if err == security.ErrAlreadyLocked {
 				c.JSON(http.StatusOK, gin.H{"message": "vault is already locked", "status": encSvc.GetStatus()})
 				return
 			}
@@ -152,7 +153,7 @@ func VaultLockHandler(encSvc *services.EncryptionService, logger *logrus.Logger)
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/vault/config [get]
-func VaultConfigGetHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
+func VaultConfigGetHandler(encSvc *security.EncryptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"vaultPath":  encSvc.GetVaultPath(),
@@ -172,7 +173,7 @@ func VaultConfigGetHandler(encSvc *services.EncryptionService) gin.HandlerFunc {
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
 // @Router /api/v1/vault/config [put]
-func VaultConfigUpdateHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultConfigUpdateHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req VaultConfigRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -201,7 +202,7 @@ func VaultConfigUpdateHandler(encSvc *services.EncryptionService, logger *logrus
 // @Produce json
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/vault/panic [post]
-func VaultPanicHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultPanicHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		logger.Warn("PANIC: Emergency key destruction triggered!")
 
@@ -232,11 +233,11 @@ func VaultPanicHandler(encSvc *services.EncryptionService, logger *logrus.Logger
 // @Failure 412 {object} map[string]string "Vault not configured"
 // @Failure 500 {object} map[string]string
 // @Router /api/v1/vault/export-config [get]
-func VaultExportConfigHandler(encSvc *services.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
+func VaultExportConfigHandler(encSvc *security.EncryptionService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		files, err := encSvc.GetVaultConfigFiles()
 		if err != nil {
-			if err == services.ErrVaultNotSetup {
+			if err == security.ErrVaultNotSetup {
 				c.JSON(http.StatusPreconditionFailed, gin.H{"error": "vault is not configured"})
 				return
 			}

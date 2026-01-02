@@ -9,8 +9,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/content"
 )
 
 // UploadSession tracks an active chunked upload
@@ -25,13 +26,13 @@ type UploadSession struct {
 
 // BlobStorageHandler manages chunked encrypted uploads
 type BlobStorageHandler struct {
-	storage  *services.StorageManager
+	storage  *content.StorageManager
 	sessions map[string]*UploadSession
 	mu       sync.RWMutex
 	logger   *logrus.Logger
 }
 
-func NewBlobStorageHandler(storage *services.StorageManager, logger *logrus.Logger) *BlobStorageHandler {
+func NewBlobStorageHandler(storage *content.StorageManager, logger *logrus.Logger) *BlobStorageHandler {
 	return &BlobStorageHandler{
 		storage:  storage,
 		sessions: make(map[string]*UploadSession),

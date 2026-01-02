@@ -4,8 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/operations"
 )
 
 // GetJobStatusHandler returns the status and result of an AI job
@@ -18,7 +19,7 @@ import (
 // @Failure 404 {object} map[string]interface{} "Job not found"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /api/v1/jobs/{id} [get]
-func GetJobStatusHandler(jobService *services.JobService, logger *logrus.Logger) gin.HandlerFunc {
+func GetJobStatusHandler(jobService *operations.JobService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 		requestID := c.GetString("request_id")

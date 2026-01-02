@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/operations"
 )
 
 // UnifiedQueryRequest is the request body for the /query endpoint
@@ -28,7 +29,7 @@ type UnifiedQueryRequest struct {
 // Modes:
 // - Async (default): Returns 202 Accepted with job_id, client polls /jobs/:id
 // - Sync (?sync=true): Blocks until result is ready (backward compatibility)
-func UnifiedQueryHandler(aiServiceURL string, httpClient *http.Client, jobService *services.JobService, logger *logrus.Logger) gin.HandlerFunc {
+func UnifiedQueryHandler(aiServiceURL string, httpClient *http.Client, jobService *operations.JobService, logger *logrus.Logger) gin.HandlerFunc {
 	client := httpClient
 	if client == nil {
 		client = &http.Client{Timeout: 90 * time.Second} // Extended timeout for LLM operations
@@ -114,7 +115,7 @@ func handleSyncQuery(c *gin.Context, client *http.Client, baseURL, query string,
 }
 
 // handleAsyncQuery creates a job and returns immediately
-func handleAsyncQuery(c *gin.Context, jobService *services.JobService, query string, logger *logrus.Logger) {
+func handleAsyncQuery(c *gin.Context, jobService *operations.JobService, query string, logger *logrus.Logger) {
 	logger.WithField("query", truncateString(query, 50)).Info("Creating async AI job")
 
 	job, err := jobService.CreateJob(c.Request.Context(), query)

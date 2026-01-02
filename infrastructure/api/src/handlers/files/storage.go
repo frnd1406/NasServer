@@ -11,9 +11,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nas-ai/api/src/domain/files"
+
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/models"
-	"github.com/nas-ai/api/src/services"
+
+	"github.com/nas-ai/api/src/drivers/storage"
+	"github.com/nas-ai/api/src/services/content"
+	"github.com/nas-ai/api/src/services/intelligence"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 )
 
@@ -22,13 +27,13 @@ func handleStorageError(c *gin.Context, err error, logger *logrus.Logger, reques
 	message := "storage operation failed"
 
 	// Map specific errors to appropriate HTTP status codes and messages
-	if errors.Is(err, services.ErrPathTraversal) {
+	if errors.Is(err, storage.ErrPathTraversal) {
 		status = http.StatusForbidden
 		message = "access denied: path traversal detected"
-	} else if errors.Is(err, services.ErrInvalidFileType) {
+	} else if errors.Is(err, content.ErrInvalidFileType) {
 		status = http.StatusBadRequest
 		message = "invalid file type: only images, documents, videos, and archives are allowed"
-	} else if errors.Is(err, services.ErrFileTooLarge) {
+	} else if errors.Is(err, content.ErrFileTooLarge) {
 		status = http.StatusBadRequest
 		message = "file too large: maximum upload size is 100MB"
 	} else if os.IsNotExist(err) {
@@ -56,7 +61,7 @@ type renameRequest struct {
 	NewName string `json:"newName" binding:"required"`
 }
 
-func StorageListHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageListHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -73,7 +78,7 @@ func StorageListHandler(storage *services.StorageManager, logger *logrus.Logger)
 	}
 }
 
-func StorageUploadHandler(storage *services.StorageManager, policyService *services.EncryptionPolicyService, honeySvc *services.HoneyfileService, aiService *services.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadHandler(storage *content.StorageManager, policyService *security.EncryptionPolicyService, honeySvc *content.HoneyfileService, aiService *intelligence.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -98,7 +103,7 @@ func StorageUploadHandler(storage *services.StorageManager, policyService *servi
 		)
 
 		// Validate USER mode has password
-		if encryptionMode == models.EncryptionUser && encryptionPassword == "" {
+		if encryptionMode == files.EncryptionUser && encryptionPassword == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":   "🔐 Verschlüsselung erforderlich",
 				"message": "Diese Datei muss verschlüsselt werden (PDF, Dokumente, etc.). Bitte richte zuerst den Vault ein unter Einstellungen → Vault, oder lade die Datei ohne Verschlüsselung hoch.",
@@ -120,9 +125,9 @@ func StorageUploadHandler(storage *services.StorageManager, policyService *servi
 		defer src.Close()
 
 		// ==== SAVE FILE (with or without encryption) ====
-		var result *services.SaveResult
+		var result *content.SaveResult
 
-		if encryptionMode == models.EncryptionNone {
+		if encryptionMode == files.EncryptionNone {
 			// Legacy path: No encryption
 			result, err = storage.Save(path, src, fileHeader)
 		} else {
@@ -146,7 +151,7 @@ func StorageUploadHandler(storage *services.StorageManager, policyService *servi
 
 		// ==== AI AGENT NOTIFICATION ====
 		// Only index UNENCRYPTED files (can't index encrypted content!)
-		if encryptionMode == models.EncryptionNone {
+		if encryptionMode == files.EncryptionNone {
 			var extractedText string
 			if _, err := src.Seek(0, 0); err == nil {
 				const MaxIndexSize = 2 * 1024 * 1024
@@ -169,7 +174,7 @@ func StorageUploadHandler(storage *services.StorageManager, policyService *servi
 	}
 }
 
-func StorageDownloadHandler(storage *services.StorageManager, honeySvc *services.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDownloadHandler(storage *content.StorageManager, honeySvc *content.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -182,7 +187,7 @@ func StorageDownloadHandler(storage *services.StorageManager, honeySvc *services
 		fullPath := filepath.Join("/mnt/data", path)
 
 		// Capture Forensic Metadata
-		meta := services.RequestMetadata{
+		meta := content.RequestMetadata{
 			IPAddress: c.ClientIP(),
 			UserAgent: c.Request.UserAgent(),
 			// UserID:    nil, // TODO: Extract from Auth Context if available
@@ -213,7 +218,7 @@ func StorageDownloadHandler(storage *services.StorageManager, honeySvc *services
 	}
 }
 
-func StorageDeleteHandler(storage *services.StorageManager, aiService *services.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDeleteHandler(storage *content.StorageManager, aiService *intelligence.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -249,7 +254,7 @@ func StorageDeleteHandler(storage *services.StorageManager, aiService *services.
 	}
 }
 
-func StorageTrashListHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashListHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		items, err := storage.ListTrash()
@@ -261,7 +266,7 @@ func StorageTrashListHandler(storage *services.StorageManager, logger *logrus.Lo
 	}
 }
 
-func StorageTrashRestoreHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashRestoreHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		id := c.Param("id")
@@ -277,7 +282,7 @@ func StorageTrashRestoreHandler(storage *services.StorageManager, logger *logrus
 	}
 }
 
-func StorageTrashDeleteHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashDeleteHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		id := c.Param("id")
@@ -294,7 +299,7 @@ func StorageTrashDeleteHandler(storage *services.StorageManager, logger *logrus.
 }
 
 // StorageTrashEmptyHandler permanently deletes ALL items from trash
-func StorageTrashEmptyHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashEmptyHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -330,7 +335,7 @@ func StorageTrashEmptyHandler(storage *services.StorageManager, logger *logrus.L
 	}
 }
 
-func StorageRenameHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageRenameHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		var req renameRequest
@@ -353,7 +358,7 @@ type moveRequest struct {
 }
 
 // StorageMoveHandler moves a file or folder to a new location
-func StorageMoveHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageMoveHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		var req moveRequest
@@ -432,7 +437,7 @@ func StorageMoveHandler(storage *services.StorageManager, logger *logrus.Logger)
 }
 
 // StorageDownloadZipHandler downloads a directory as a ZIP file
-func StorageDownloadZipHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDownloadZipHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -547,7 +552,7 @@ type batchDownloadRequest struct {
 }
 
 // StorageBatchDownloadHandler downloads multiple files as a ZIP
-func StorageBatchDownloadHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageBatchDownloadHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -677,7 +682,7 @@ func StorageBatchDownloadHandler(storage *services.StorageManager, logger *logru
 }
 
 // StorageMkdirHandler creates a new directory
-func StorageMkdirHandler(storage *services.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageMkdirHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 

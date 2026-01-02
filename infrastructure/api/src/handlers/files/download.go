@@ -10,7 +10,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+
+	"github.com/nas-ai/api/src/services/content"
 	"github.com/sirupsen/logrus"
 )
 
@@ -53,9 +54,9 @@ type DownloadRequest struct {
 // Headers:
 //   - Range: Optional. Byte range for partial content (video seeking)
 func SmartDownloadHandler(
-	storage *services.StorageManager,
-	honeySvc *services.HoneyfileService,
-	deliverySvc *services.ContentDeliveryService,
+	storage *content.StorageManager,
+	honeySvc *content.HoneyfileService,
+	deliverySvc *content.ContentDeliveryService,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -89,7 +90,7 @@ func SmartDownloadHandler(
 
 		// ==== SECURITY: Honeyfile Check ====
 		if honeySvc != nil {
-			meta := services.RequestMetadata{
+			meta := content.RequestMetadata{
 				IPAddress: c.ClientIP(),
 				UserAgent: c.Request.UserAgent(),
 				Action:    "download",

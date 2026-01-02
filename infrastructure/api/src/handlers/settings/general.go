@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/services/config"
 )
 
 type BackupSettingsRequest struct {
@@ -29,7 +29,7 @@ type SettingsResponse struct {
 
 // SystemSettingsHandler returns the current system configuration
 // GET /system/settings
-func SystemSettingsHandler(settingsSvc *services.SettingsService) gin.HandlerFunc {
+func SystemSettingsHandler(settingsSvc *config.SettingsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		backup := settingsSvc.GetBackupSettings()
 
@@ -45,7 +45,7 @@ func SystemSettingsHandler(settingsSvc *services.SettingsService) gin.HandlerFun
 
 // ValidatePathHandler checks if a path is valid for usage
 // POST /system/validate-path
-func ValidatePathHandler(settingsSvc *services.SettingsService) gin.HandlerFunc {
+func ValidatePathHandler(settingsSvc *config.SettingsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ValidatePathRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -60,7 +60,7 @@ func ValidatePathHandler(settingsSvc *services.SettingsService) gin.HandlerFunc 
 
 // UpdateBackupSettingsHandler updates the backup configuration
 // PUT /system/settings/backup
-func UpdateBackupSettingsHandler(settingsSvc *services.SettingsService) gin.HandlerFunc {
+func UpdateBackupSettingsHandler(settingsSvc *config.SettingsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req BackupSettingsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -68,7 +68,7 @@ func UpdateBackupSettingsHandler(settingsSvc *services.SettingsService) gin.Hand
 			return
 		}
 
-		dto := services.BackupSettingsDTO{
+		dto := config.BackupSettingsDTO{
 			Schedule:  req.Schedule,
 			Retention: req.Retention,
 			Path:      req.Path,

@@ -1,15 +1,16 @@
 package system
 
 import (
-	"net/http"
+		"github.com/nas-ai/api/src/repository/system"
+"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/repository"
+
 	"github.com/sirupsen/logrus"
 )
 
 // SystemAlertsListHandler returns all open alerts.
-func SystemAlertsListHandler(repo *repository.SystemAlertsRepository, logger *logrus.Logger) gin.HandlerFunc {
+func SystemAlertsListHandler(repo *system_repo.SystemAlertsRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -36,7 +37,7 @@ func SystemAlertsListHandler(repo *repository.SystemAlertsRepository, logger *lo
 }
 
 // SystemAlertResolveHandler marks an alert as resolved.
-func SystemAlertResolveHandler(repo *repository.SystemAlertsRepository, logger *logrus.Logger) gin.HandlerFunc {
+func SystemAlertResolveHandler(repo *system_repo.SystemAlertsRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		id := c.Param("id")

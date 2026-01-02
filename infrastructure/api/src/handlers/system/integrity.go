@@ -5,8 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/content"
 )
 
 // CheckpointRequest represents system integrity checkpoint configuration
@@ -28,7 +29,7 @@ type CheckpointRequest struct {
 // @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Router /sys/integrity/checkpoints [post]
-func CreateCheckpointHandler(integritySvc *services.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
+func CreateCheckpointHandler(integritySvc *content.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CheckpointRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

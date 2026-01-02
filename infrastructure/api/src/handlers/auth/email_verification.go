@@ -1,12 +1,15 @@
 package auth
 
 import (
-	"net/http"
+		"github.com/nas-ai/api/src/repository/auth"
+"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/repository"
-	"github.com/nas-ai/api/src/services"
+
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/operations"
+	"github.com/nas-ai/api/src/services/security"
 )
 
 // VerifyEmailRequest represents the email verification request
@@ -26,9 +29,9 @@ type VerifyEmailRequest struct {
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /auth/verify-email [post]
 func VerifyEmailHandler(
-	userRepo *repository.UserRepository,
-	tokenService *services.TokenService,
-	emailService *services.EmailService,
+	userRepo *auth_repo.UserRepository,
+	tokenService *security.TokenService,
+	emailService *operations.EmailService,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -115,9 +118,9 @@ func VerifyEmailHandler(
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /auth/resend-verification [post]
 func ResendVerificationHandler(
-	userRepo *repository.UserRepository,
-	tokenService *services.TokenService,
-	emailService *services.EmailService,
+	userRepo *auth_repo.UserRepository,
+	tokenService *security.TokenService,
+	emailService *operations.EmailService,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {

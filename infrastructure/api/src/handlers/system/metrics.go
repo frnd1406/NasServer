@@ -1,7 +1,9 @@
 package system
 
 import (
-	"math"
+			"github.com/nas-ai/api/src/domain/system"
+"github.com/nas-ai/api/src/repository/system"
+"math"
 	"net"
 	"net/http"
 	"os"
@@ -9,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/models"
-	"github.com/nas-ai/api/src/repository"
+
+
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -25,7 +27,7 @@ type SystemMetricsRequest struct {
 }
 
 // SystemMetricsHandler nimmt Metriken entgegen und schützt per API-Key-Header.
-func SystemMetricsHandler(repo *repository.SystemMetricsRepository, apiKey string, logger *logrus.Logger) gin.HandlerFunc {
+func SystemMetricsHandler(repo *system_repo.SystemMetricsRepository, apiKey string, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -57,7 +59,7 @@ func SystemMetricsHandler(repo *repository.SystemMetricsRepository, apiKey strin
 			return
 		}
 
-		metric := &models.SystemMetric{
+		metric := &system.SystemMetric{
 			AgentID:   req.AgentID,
 			CPUUsage:  req.CPUUsage,
 			RAMUsage:  req.RAMUsage,
@@ -87,7 +89,7 @@ func SystemMetricsHandler(repo *repository.SystemMetricsRepository, apiKey strin
 }
 
 // SystemMetricsListHandler liefert die neuesten Metriken (öffentlich; read-only).
-func SystemMetricsListHandler(repo *repository.SystemMetricsRepository, logger *logrus.Logger) gin.HandlerFunc {
+func SystemMetricsListHandler(repo *system_repo.SystemMetricsRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 

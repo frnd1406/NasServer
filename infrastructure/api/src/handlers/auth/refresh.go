@@ -6,7 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/services"
+
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,7 +35,7 @@ type RefreshResponse struct {
 // @Failure 401 {object} map[string]interface{} "Invalid or expired refresh token"
 // @Router /auth/refresh [post]
 func RefreshHandler(
-	jwtService *services.JWTService,
+	jwtService *security.JWTService,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
@@ -100,7 +101,7 @@ func RefreshHandler(
 		}
 
 		// Verify token type is refresh token
-		if claims.TokenType != services.RefreshToken {
+		if claims.TokenType != security.RefreshToken {
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
 				"user_id":    claims.UserID,

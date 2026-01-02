@@ -1,7 +1,9 @@
 package settings
 
 import (
-	"database/sql"
+		"github.com/nas-ai/api/src/repository/auth"
+	"github.com/nas-ai/api/src/repository/settings"
+"database/sql"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -11,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/repository"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -110,7 +112,7 @@ func GetAdminSettingsHandler(cfg *config.Config, logger *logrus.Logger) gin.Hand
 }
 
 // UpdateAdminSettingsHandler updates admin configuration
-func UpdateAdminSettingsHandler(cfg *config.Config, settingsRepo *repository.SystemSettingsRepository, logger *logrus.Logger) gin.HandlerFunc {
+func UpdateAdminSettingsHandler(cfg *config.Config, settingsRepo *settings_repo.SystemSettingsRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req UpdateAdminSettingsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -186,7 +188,7 @@ func SystemStatusHandler(db *database.DB, logger *logrus.Logger) gin.HandlerFunc
 // User Management Handler
 // ============================================================
 
-func UserListHandler(userRepo *repository.UserRepository, logger *logrus.Logger) gin.HandlerFunc {
+func UserListHandler(userRepo *auth_repo.UserRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
@@ -204,7 +206,7 @@ func UserListHandler(userRepo *repository.UserRepository, logger *logrus.Logger)
 	}
 }
 
-func UpdateUserRoleHandler(userRepo *repository.UserRepository, logger *logrus.Logger) gin.HandlerFunc {
+func UpdateUserRoleHandler(userRepo *auth_repo.UserRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("id")
 

@@ -1,16 +1,17 @@
 package handlers
 
 import (
-	"net/http"
+		"github.com/nas-ai/api/src/repository/auth"
+"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/repository"
+
 	"github.com/sirupsen/logrus"
 )
 
 // ProfileHandler returns the current user's profile (protected route)
 func ProfileHandler(
-	userRepo *repository.UserRepository,
+	userRepo *auth_repo.UserRepository,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {

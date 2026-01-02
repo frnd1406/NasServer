@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/intelligence"
 )
 
 // ReconcileKnowledgeHandler triggers garbage collection for the AI knowledge index.
@@ -23,7 +24,7 @@ import (
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/system/reconcile-knowledge [post]
 func ReconcileKnowledgeHandler(
-	secureAIFeeder *services.SecureAIFeeder,
+	secureAIFeeder *intelligence.SecureAIFeeder,
 	dataPath string,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {

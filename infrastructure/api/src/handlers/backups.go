@@ -5,11 +5,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/config"
-	"github.com/nas-ai/api/src/services"
+	
 	"github.com/sirupsen/logrus"
+	"github.com/nas-ai/api/src/services/operations"
 )
 
-func BackupListHandler(backupSvc *services.BackupService, logger *logrus.Logger) gin.HandlerFunc {
+func BackupListHandler(backupSvc *operations.BackupService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		items, err := backupSvc.ListBackups()
 		if err != nil {
@@ -21,7 +22,7 @@ func BackupListHandler(backupSvc *services.BackupService, logger *logrus.Logger)
 	}
 }
 
-func BackupCreateHandler(backupSvc *services.BackupService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
+func BackupCreateHandler(backupSvc *operations.BackupService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// SECURITY FIX [BUG-GO-010]: Removed dynamic path parameter - uses configured path only
 		b, err := backupSvc.CreateBackup()
@@ -34,7 +35,7 @@ func BackupCreateHandler(backupSvc *services.BackupService, cfg *config.Config, 
 	}
 }
 
-func BackupRestoreHandler(backupSvc *services.BackupService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
+func BackupRestoreHandler(backupSvc *operations.BackupService, cfg *config.Config, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		userID := c.GetString("user_id")
@@ -118,7 +119,7 @@ func BackupRestoreHandler(backupSvc *services.BackupService, cfg *config.Config,
 	}
 }
 
-func BackupDeleteHandler(backupSvc *services.BackupService, logger *logrus.Logger) gin.HandlerFunc {
+func BackupDeleteHandler(backupSvc *operations.BackupService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 		if id == "" {

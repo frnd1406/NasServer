@@ -1,11 +1,13 @@
 package system
 
 import (
-	"net/http"
+			"github.com/nas-ai/api/src/domain/system"
+"github.com/nas-ai/api/src/repository/system"
+"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/models"
-	"github.com/nas-ai/api/src/repository"
+
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,7 +17,7 @@ type MonitoringIngestRequest struct {
 	RAMPercent float64 `json:"ram_percent" binding:"required"`
 }
 
-func MonitoringIngestHandler(repo *repository.MonitoringRepository, monitoringToken string, logger *logrus.Logger) gin.HandlerFunc {
+func MonitoringIngestHandler(repo *system_repo.MonitoringRepository, monitoringToken string, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -35,7 +37,7 @@ func MonitoringIngestHandler(repo *repository.MonitoringRepository, monitoringTo
 			return
 		}
 
-		sample := &models.MonitoringSample{
+		sample := &system.MonitoringSample{
 			Source:     req.Source,
 			CPUPercent: req.CPUPercent,
 			RAMPercent: req.RAMPercent,
@@ -54,7 +56,7 @@ func MonitoringIngestHandler(repo *repository.MonitoringRepository, monitoringTo
 	}
 }
 
-func MonitoringListHandler(repo *repository.MonitoringRepository, logger *logrus.Logger) gin.HandlerFunc {
+func MonitoringListHandler(repo *system_repo.MonitoringRepository, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 

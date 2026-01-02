@@ -1,16 +1,19 @@
 package auth
 
 import (
-	"crypto/subtle"
+		"github.com/nas-ai/api/src/repository/auth"
+"crypto/subtle"
 	"net/http"
 	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
-	"github.com/nas-ai/api/src/middleware"
-	"github.com/nas-ai/api/src/repository"
-	"github.com/nas-ai/api/src/services"
+	"github.com/nas-ai/api/src/middleware/logic"
+
+
+	"github.com/nas-ai/api/src/services/operations"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 )
 
@@ -46,11 +49,11 @@ type RegisterResponse struct {
 // @Router /auth/register [post]
 func RegisterHandler(
 	cfg *config.Config,
-	userRepo *repository.UserRepository,
-	jwtService *services.JWTService,
-	passwordService *services.PasswordService,
-	tokenService *services.TokenService,
-	emailService *services.EmailService,
+	userRepo *auth_repo.UserRepository,
+	jwtService *security.JWTService,
+	passwordService *security.PasswordService,
+	tokenService *security.TokenService,
+	emailService *operations.EmailService,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {
@@ -210,7 +213,7 @@ func RegisterHandler(
 		}
 
 		// Start new CSRF session for this user (auto-login after register)
-		sessionID, err := middleware.EnsureCSRFSession(c)
+		sessionID, err := logic.EnsureCSRFSession(c)
 		if err != nil {
 			logger.WithError(err).Error("Failed to create CSRF session")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
@@ -233,13 +236,13 @@ func RegisterHandler(
 		}
 
 		// Generate CSRF token
-		csrfToken, err := middleware.GenerateCSRFToken(redis, sessionID)
+		csrfToken, err := logic.GenerateCSRFToken(redis, sessionID)
 		if err != nil {
 			logger.WithError(err).Error("Failed to generate CSRF token")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 			return
 		}
-		middleware.SetCSRFCookie(c, sessionID)
+		logic.SetCSRFCookie(c, sessionID)
 
 		verificationToken := ""
 		// Generate verification token and send email (non-blocking)
