@@ -5,7 +5,7 @@ import {
   Check, Loader2, FolderOpen, Lock, Unlock, Sparkles,
   Server, AlertCircle
 } from 'lucide-react';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 import { apiRequest } from '../lib/api';
 
 const API_BASE = window.location.origin;

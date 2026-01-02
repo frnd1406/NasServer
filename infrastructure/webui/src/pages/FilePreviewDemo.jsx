@@ -9,8 +9,8 @@ import {
   FileJson,
   AlertCircle
 } from 'lucide-react';
-import { FilePreviewPanel } from '../components/FilePreviewPanel';
-import { FileSelector } from '../components/FileSelector';
+import { FilePreviewPanel } from '../components/Files/FilePreviewPanel';
+import { FileSelector } from '../components/Files/FileSelector';
 
 /**
  * FilePreviewDemo - Complete demo page for the File Preview System
@@ -340,11 +340,10 @@ func SearchHandler(db *database.DB, aiServiceURL string) gin.HandlerFunc {
               <button
                 key={demo.id}
                 onClick={() => handleDemoClick(demo)}
-                className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 text-left ${
-                  isActive
+                className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 text-left ${isActive
                     ? `border-${demo.color}-500 bg-${demo.color}-500/10 shadow-lg shadow-${demo.color}-500/20`
                     : 'border-white/10 bg-slate-800/30 hover:border-white/20 hover:bg-slate-800/50'
-                }`}
+                  }`}
               >
                 <div className={`p-3 bg-${demo.color}-500/20 rounded-xl inline-block mb-4 group-hover:scale-110 transition-transform`}>
                   <Icon size={28} className={`text-${demo.color}-400`} />

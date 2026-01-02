@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Send, Bot, Loader2, Trash2, AlertCircle } from 'lucide-react';
-import { useChatSession } from '../hooks/useChatSession';
+import { useChatSession } from '../../hooks/useChatSession';
 import { MessageList } from './MessageList';
 
 /**

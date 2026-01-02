@@ -8,7 +8,7 @@ import {
     Loader2,
     RefreshCw
 } from "lucide-react";
-import { useToast } from "../Toast";
+import { useToast } from "../ui/Toast";
 import { apiRequest } from "../../lib/api";
 
 // Glass Card Component

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, memo } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
-import { formatFileSize, canPreview } from '../utils/fileUtils';
-import { useVault } from '../context/VaultContext';
+import { InlineRenameInput } from './InlineRenameInput';
+import { formatFileSize, canPreview } from '../../utils/fileUtils';
+import { useVault } from '../../context/VaultContext';
 
 export const FileListView = memo(function FileListView({
     files,
@@ -18,7 +19,6 @@ export const FileListView = memo(function FileListView({
     onRenameComplete,
 }) {
     const [renamingItem, setRenamingItem] = useState(null);
-    const [newName, setNewName] = useState('');
 
     // Vault state
     const { isUnlocked } = useVault();
@@ -27,23 +27,9 @@ export const FileListView = memo(function FileListView({
     useEffect(() => {
         if (renameTarget) {
             setRenamingItem(renameTarget);
-            setNewName(renameTarget.name);
             onRenameComplete?.();
         }
     }, [renameTarget, onRenameComplete]);
-
-    const handleRenameSubmit = async () => {
-        if (renamingItem && newName && newName !== renamingItem.name) {
-            await onRename(renamingItem, newName);
-        }
-        setRenamingItem(null);
-        setNewName('');
-    };
-
-    const cancelRename = () => {
-        setRenamingItem(null);
-        setNewName('');
-    };
 
     const handleRowClick = (e, item) => {
         // Single click: Select
@@ -103,8 +89,8 @@ export const FileListView = memo(function FileListView({
                                     <button
                                         onClick={() => onToggleSelect?.(item.name)}
                                         className={`p-1 rounded transition-all ${selected
-                                                ? 'text-blue-400'
-                                                : 'text-slate-500 hover:text-slate-300'
+                                            ? 'text-blue-400'
+                                            : 'text-slate-500 hover:text-slate-300'
                                             }`}
                                     >
                                         {selected ? <CheckSquare size={18} /> : <Square size={18} />}
@@ -117,24 +103,15 @@ export const FileListView = memo(function FileListView({
                                             <div className={`p-2 rounded-lg ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-400'}`}>
                                                 <FileIcon name={item.name} isDir={item.isDir} size={16} />
                                             </div>
-                                            <input
-                                                type="text"
-                                                value={newName}
-                                                onChange={(e) => setNewName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') handleRenameSubmit();
-                                                    if (e.key === 'Escape') cancelRename();
+                                            <InlineRenameInput
+                                                initialName={item.name}
+                                                onSubmit={async (newName) => {
+                                                    await onRename(item, newName);
+                                                    setRenamingItem(null);
                                                 }}
-                                                className="flex-1 px-3 py-1.5 bg-slate-800 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                                                autoFocus
-                                                onClick={(e) => e.stopPropagation()}
+                                                onCancel={() => setRenamingItem(null)}
+                                                containerClassName="flex-1"
                                             />
-                                            <button onClick={handleRenameSubmit} className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
-                                                <Check size={14} />
-                                            </button>
-                                            <button onClick={cancelRename} className="p-2 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30">
-                                                <X size={14} />
-                                            </button>
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
@@ -172,7 +149,6 @@ export const FileListView = memo(function FileListView({
                                         <button
                                             onClick={() => {
                                                 setRenamingItem(item);
-                                                setNewName(item.name);
                                             }}
                                             className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all"
                                             title="Rename"

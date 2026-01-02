@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
-import { formatFileSize, canPreview } from '../utils/fileUtils';
-import { useLongPress } from '../hooks/useLongPress';
-import { useVault } from '../context/VaultContext';
+import { formatFileSize, canPreview } from '../../utils/fileUtils';
+import { InlineRenameInput } from './InlineRenameInput';
+import { useLongPress } from '../../hooks/useLongPress';
+import { useVault } from '../../context/VaultContext';
 
 export const FileCard = memo(function FileCard({
     item,
@@ -22,7 +23,6 @@ export const FileCard = memo(function FileCard({
     onMoveFile,
 }) {
     const [isRenaming, setIsRenaming] = useState(false);
-    const [newName, setNewName] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
 
     // Vault state
@@ -48,23 +48,9 @@ export const FileCard = memo(function FileCard({
     useEffect(() => {
         if (renameTarget && renameTarget.name === item.name) {
             setIsRenaming(true);
-            setNewName(item.name);
             onRenameComplete?.();
         }
     }, [renameTarget, item.name, onRenameComplete]);
-
-    const handleRenameSubmit = async () => {
-        if (newName && newName !== item.name) {
-            await onRename(item, newName);
-        }
-        setIsRenaming(false);
-        setNewName('');
-    };
-
-    const cancelRename = () => {
-        setIsRenaming(false);
-        setNewName('');
-    };
 
     // Interaction Handlers
     const handleClick = (e) => {
@@ -122,10 +108,10 @@ export const FileCard = memo(function FileCard({
     return (
         <div
             className={`group relative overflow-hidden rounded-xl border transition-all cursor-pointer select-none ${selected
-                    ? 'border-blue-500/50 bg-blue-500/10'
-                    : isDragOver
-                        ? 'border-emerald-500/50 bg-emerald-500/10'
-                        : 'border-white/10 bg-slate-900/40 dark:bg-slate-900/40 hover:bg-white/5'
+                ? 'border-blue-500/50 bg-blue-500/10'
+                : isDragOver
+                    ? 'border-emerald-500/50 bg-emerald-500/10'
+                    : 'border-white/10 bg-slate-900/40 dark:bg-slate-900/40 hover:bg-white/5'
                 }`}
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
@@ -145,8 +131,8 @@ export const FileCard = memo(function FileCard({
                 <button
                     onClick={() => onToggleSelect?.(item.name)}
                     className={`p-1 rounded transition-all ${selected
-                            ? 'text-blue-400 bg-blue-500/20'
-                            : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
+                        ? 'text-blue-400 bg-blue-500/20'
+                        : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
                         }`}
                 >
                     {selected ? <CheckSquare size={16} /> : <Square size={16} />}
@@ -170,26 +156,15 @@ export const FileCard = memo(function FileCard({
 
                 {/* Name */}
                 {isRenaming ? (
-                    <div className="w-full flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                            type="text"
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleRenameSubmit();
-                                if (e.key === 'Escape') cancelRename();
-                            }}
-                            className="flex-1 px-2 py-1 text-xs bg-slate-800 border border-white/10 rounded text-white focus:outline-none focus:border-blue-500"
-                            autoFocus
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <button onClick={handleRenameSubmit} className="p-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
-                            <Check size={14} />
-                        </button>
-                        <button onClick={cancelRename} className="p-1 rounded bg-rose-500/20 text-rose-400 hover:bg-rose-500/30">
-                            <X size={14} />
-                        </button>
-                    </div>
+                    <InlineRenameInput
+                        initialName={item.name}
+                        onSubmit={async (newName) => {
+                            await onRename(item, newName);
+                            setIsRenaming(false);
+                        }}
+                        onCancel={() => setIsRenaming(false)}
+                        inputClassName="text-xs px-2 py-1"
+                    />
                 ) : (
                     <p className="text-sm font-medium text-white truncate w-full px-2 group-hover:text-blue-400 transition-colors">
                         {item.name}

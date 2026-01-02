@@ -14,7 +14,7 @@ import {
   Lock,
   AlertTriangle,
 } from "lucide-react";
-import { DashboardSkeleton } from "../components/Skeleton";
+import { DashboardSkeleton } from "../components/ui/Skeleton";
 import SystemHealthCard from "../components/SystemHealthCard";
 
 // Glass Card Component

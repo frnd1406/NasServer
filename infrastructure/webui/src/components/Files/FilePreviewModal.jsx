@@ -1,8 +1,8 @@
 // File Preview Modal component
 
 import { X, Download, Loader2 } from 'lucide-react';
-import { GlassCard } from './ui/GlassCard';
-import { formatFileSize } from '../utils/fileUtils';
+import { GlassCard } from '../ui/GlassCard';
+import { formatFileSize } from '../../utils/fileUtils';
 
 export function FilePreviewModal({
     previewItem,

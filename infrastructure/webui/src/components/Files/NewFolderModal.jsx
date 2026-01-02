@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, FolderPlus, Loader2 } from 'lucide-react';
-import { GlassCard } from './ui/GlassCard';
+import { GlassCard } from '../ui/GlassCard';
 
 export function NewFolderModal({ isOpen, onClose, onCreateFolder, currentPath }) {
     const [folderName, setFolderName] = useState('');

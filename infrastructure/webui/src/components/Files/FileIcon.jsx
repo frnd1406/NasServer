@@ -10,7 +10,7 @@ import {
     FileVideo,
     FileAudio,
 } from 'lucide-react';
-import { getFileType } from '../utils/fileUtils';
+import { getFileType } from '../../utils/fileUtils';
 
 const ICON_MAP = {
     folder: FolderOpen,

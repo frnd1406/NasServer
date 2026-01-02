@@ -12,7 +12,7 @@ import Settings from "./pages/Settings";
 import Unlock from "./pages/Unlock";
 import Setup from "./pages/Setup";
 import FilePreviewDemo from "./pages/FilePreviewDemo";
-import ErrorFallback from "./components/ErrorFallback";
+import ErrorFallback from "./components/ui/ErrorFallback";
 import ConnectionFallbackModal from "./components/ConnectionFallbackModal";
 import logger from "./utils/logger";
 import { VaultProvider } from "./context/VaultContext";

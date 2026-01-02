@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, X, Download, Trash2, CheckSquare, Square } from 'lucide-react';
-import { FileToolbar } from '../FileToolbar';
+import { FileToolbar } from './FileToolbar';
 
 export function FileHeader({
     breadcrumbs,

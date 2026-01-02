@@ -1,5 +1,5 @@
 import { RefreshCw, Trash, Trash2 } from 'lucide-react';
-import { GlassCard } from './ui/GlassCard';
+import { GlassCard } from '../ui/GlassCard';
 import { FileIcon } from './FileIcon';
 
 export function TrashView({ trashedFiles, onRefresh, onRestore, onEmptyTrash }) {

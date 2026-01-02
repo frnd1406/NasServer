@@ -8,13 +8,13 @@ import { useFileManager } from '../hooks/useFileManager';
 // Components
 import { GlassCard } from '../components/ui/GlassCard';
 import { FileHeader } from '../components/Files/FileHeader';
-import { FileGridView } from '../components/FileGridView';
-import { FileListView } from '../components/FileListView';
-import { TrashView } from '../components/TrashView';
-import { DragDropOverlay } from '../components/DragDropOverlay';
-import { NewFolderModal } from '../components/NewFolderModal';
-import { FilePreviewModal } from '../components/FilePreviewModal';
-import { ContextMenu } from '../components/ContextMenu';
+import { FileGridView } from '../components/Files/FileGridView';
+import { FileListView } from '../components/Files/FileListView';
+import { TrashView } from '../components/Files/TrashView';
+import { DragDropOverlay } from '../components/Files/DragDropOverlay';
+import { NewFolderModal } from '../components/Files/NewFolderModal';
+import { FilePreviewModal } from '../components/Files/FilePreviewModal';
+import { ContextMenu } from '../components/Files/ContextMenu';
 
 export default function Files({ initialPath = '/' }) {
   // Use the Facade Hook

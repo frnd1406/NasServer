@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { fetchFileContent } from '../api/files';
+import { fetchFileContent } from '../../api/files';
 
 /**
  * FilePreviewPanel - Displays file content with support for multiple file types

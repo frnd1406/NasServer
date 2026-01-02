@@ -39,7 +39,7 @@ import {
     FolderOpen
 } from "lucide-react";
 import { useTheme } from "../components/ThemeToggle";
-import { useToast } from "../components/Toast";
+import { useToast } from '../components/ui/Toast';
 import { apiRequest } from "../lib/api";
 
 // Lazy load new settings tabs
