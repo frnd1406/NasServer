@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nas-ai/api/src/handlers"
+	"github.com/nas-ai/api/src/handlers/system"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +29,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	// Create router
 	router := gin.New()
-	router.GET("/health", handlers.Health(healthyChecker{}, healthyChecker{}, logger))
+	router.GET("/health", system.Health(healthyChecker{}, healthyChecker{}, logger))
 
 	// Create request
 	req, err := http.NewRequest("GET", "/health", nil)
@@ -62,7 +62,7 @@ func TestHealthEndpoint_MultipleRequests(t *testing.T) {
 	logger.SetLevel(logrus.ErrorLevel)
 
 	router := gin.New()
-	router.GET("/health", handlers.Health(healthyChecker{}, healthyChecker{}, logger))
+	router.GET("/health", system.Health(healthyChecker{}, healthyChecker{}, logger))
 
 	// Test multiple requests to ensure consistency
 	for i := 0; i < 5; i++ {
