@@ -107,7 +107,7 @@ func (s *ContentDeliveryService) detectEncryptionStatus(fullPath string) files.E
 
 func (s *ContentDeliveryService) prepareUnencryptedStream(fullPath string, fileInfo os.FileInfo, rangeHeader string) (*FileStreamResult, error) {
 	filename := fileInfo.Name()
-	contentType := s.detectContentType(fullPath, filename)
+	contentType := s.detectContentType(filename)
 
 	// Check for X-Accel-Redirect (Nginx)
 	useXAccel := os.Getenv("USE_NGINX_XACCEL") == "true"
@@ -202,7 +202,7 @@ func (s *ContentDeliveryService) prepareEncryptedStream(fullPath string, fileInf
 	if strings.HasSuffix(strings.ToLower(filename), ".enc") {
 		filename = filename[:len(filename)-4]
 	}
-	contentType := s.detectContentType(fullPath, filename)
+	contentType := s.detectContentType(filename)
 
 	// Get encrypted file info
 	encInfo, err := security.GetEncryptedFileInfo(file)
@@ -285,7 +285,7 @@ func (s *ContentDeliveryService) prepareEncryptedStream(fullPath string, fileInf
 	}
 }
 
-func (s *ContentDeliveryService) detectContentType(fullPath, filename string) string {
+func (s *ContentDeliveryService) detectContentType(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".mp4":

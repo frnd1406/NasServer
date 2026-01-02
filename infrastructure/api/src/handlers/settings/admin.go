@@ -1,14 +1,15 @@
 package settings
 
 import (
-		"github.com/nas-ai/api/src/repository/auth"
-	"github.com/nas-ai/api/src/repository/settings"
-"database/sql"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"runtime"
 	"strings"
 	"time"
+
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
+	settings_repo "github.com/nas-ai/api/src/repository/settings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/config"
@@ -333,19 +334,6 @@ func ToggleMaintenanceModeHandler(logger *logrus.Logger) gin.HandlerFunc {
 // ============================================================
 // Helper Functions
 // ============================================================
-
-func parseCORSOrigins(origins string) []string {
-	if origins == "" {
-		return []string{}
-	}
-	result := make([]string, 0)
-	for _, o := range splitAndTrim(origins, ",") {
-		if o != "" {
-			result = append(result, o)
-		}
-	}
-	return result
-}
 
 func splitAndTrim(s, sep string) []string {
 	parts := make([]string, 0)

@@ -134,10 +134,6 @@ const (
 	MagicBytes = "NASC"
 	// Version byte for format versioning
 	Version = 0x02
-
-	// Legacy AES-GCM constants (for backward compatibility)
-	legacyNonceLen        = 12
-	legacyArgonIterations = 3
 )
 
 // VaultConfig stores vault configuration

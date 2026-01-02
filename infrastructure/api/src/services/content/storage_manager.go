@@ -1,9 +1,7 @@
 package content
 
 import (
-			"github.com/nas-ai/api/src/domain/files"
-"github.com/nas-ai/api/src/repository/files"
-"context"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -16,8 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nas-ai/api/src/drivers/storage"
+	"github.com/nas-ai/api/src/domain/files"
+	files_repo "github.com/nas-ai/api/src/repository/files"
 
+	"github.com/nas-ai/api/src/drivers/storage"
 
 	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
@@ -117,14 +117,15 @@ func (s *StorageManager) SaveWithEncryption(
 		defer pw.Close()
 
 		// If NO encryption, just copy to pipe (and hash original)
-		if mode == files.EncryptionNone {
+		switch mode {
+		case files.EncryptionNone:
 			// Hash original content
 			tee := io.TeeReader(file, hasher)
 			if _, err := io.Copy(pw, tee); err != nil {
 				errChan <- err
 				return
 			}
-		} else if mode == files.EncryptionUser {
+		case files.EncryptionUser:
 			// EncryptStream uses hashing inside? No, we need to hash the ENCRYPTED content for integrity?
 			// Or hash the PLAINTEXT?
 			// StorageService.go hashed the written content.
@@ -151,7 +152,7 @@ func (s *StorageManager) SaveWithEncryption(
 				},
 				KeyVersion: 1,
 			}
-		} else {
+		default:
 			// System mode fallback or not impl
 			errChan <- errors.New("system encryption not implemented")
 		}

@@ -328,17 +328,3 @@ func TestIntegration_CSRFProtection(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
 }
-
-// Helper function to create JSON request body
-func createJSONBody(data interface{}) *bytes.Buffer {
-	body, _ := json.Marshal(data)
-	return bytes.NewBuffer(body)
-}
-
-// Test helper to parse JSON response
-func parseJSONResponse(t *testing.T, w *httptest.ResponseRecorder) map[string]interface{} {
-	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	return response
-}

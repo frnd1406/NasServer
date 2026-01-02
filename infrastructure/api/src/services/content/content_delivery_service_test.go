@@ -127,7 +127,7 @@ func TestContentDeliveryService_DetectContentType(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.filename, func(t *testing.T) {
-			result := service.detectContentType("/path/to/"+tc.filename, tc.filename)
+			result := service.detectContentType(tc.filename)
 			if result != tc.expected {
 				t.Errorf("detectContentType(%q) = %q, want %q", tc.filename, result, tc.expected)
 			}
