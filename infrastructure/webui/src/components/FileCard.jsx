@@ -1,13 +1,13 @@
 // File Card component for Grid View with selection support
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
 import { useLongPress } from '../hooks/useLongPress';
 import { useVault } from '../context/VaultContext';
 
-export function FileCard({
+export const FileCard = memo(function FileCard({
     item,
     onNavigate,
     onPreview,
@@ -25,16 +25,15 @@ export function FileCard({
     const [newName, setNewName] = useState('');
     const [isDragOver, setIsDragOver] = useState(false);
 
-    // Vault state for encryption indicator
+    // Vault state
     const { isUnlocked } = useVault();
     const isEncrypted = item?.name?.endsWith('.enc') || false;
 
-    // Long-press handler for mobile preview
+    // Long-press handler for mobile
     const handleLongPress = useCallback(() => {
         if (!item.isDir && canPreview(item.name)) {
             onPreview?.(item);
         } else {
-            // Open context menu on long-press for folders or non-previewable files
             onContextMenu?.({ preventDefault: () => { }, clientX: 100, clientY: 100 }, item);
         }
     }, [item, onPreview, onContextMenu]);
@@ -48,17 +47,13 @@ export function FileCard({
     // Trigger rename from context menu
     useEffect(() => {
         if (renameTarget && renameTarget.name === item.name) {
-            startRename();
+            setIsRenaming(true);
+            setNewName(item.name);
             onRenameComplete?.();
         }
-    }, [renameTarget]);
+    }, [renameTarget, item.name, onRenameComplete]);
 
-    const startRename = () => {
-        setIsRenaming(true);
-        setNewName(item.name);
-    };
-
-    const handleRename = async () => {
+    const handleRenameSubmit = async () => {
         if (newName && newName !== item.name) {
             await onRename(item, newName);
         }
@@ -69,6 +64,26 @@ export function FileCard({
     const cancelRename = () => {
         setIsRenaming(false);
         setNewName('');
+    };
+
+    // Interaction Handlers
+    const handleClick = (e) => {
+        if (isRenaming) return;
+        // Single click selects
+        e.preventDefault();
+        onToggleSelect?.(item.name);
+    };
+
+    const handleDoubleClick = (e) => {
+        if (isRenaming) return;
+        // Double click navigates or previews
+        e.preventDefault();
+        e.stopPropagation();
+        if (item.isDir) {
+            onNavigate(item);
+        } else if (canPreview(item.name)) {
+            onPreview(item);
+        }
     };
 
     // Drag handlers
@@ -94,7 +109,9 @@ export function FileCard({
         setIsDragOver(false);
 
         try {
-            const sourceItem = JSON.parse(e.dataTransfer.getData('application/json'));
+            const data = e.dataTransfer.getData('application/json');
+            if (!data) return;
+            const sourceItem = JSON.parse(data);
             if (sourceItem.name === item.name) return; // Can't drop on itself
             await onMoveFile?.(sourceItem, item);
         } catch (err) {
@@ -104,13 +121,14 @@ export function FileCard({
 
     return (
         <div
-            className={`group relative overflow-hidden rounded-xl border transition-all cursor-pointer ${selected
-                ? 'border-blue-500/50 bg-blue-500/10'
-                : isDragOver
-                    ? 'border-emerald-500/50 bg-emerald-500/10'
-                    : 'border-white/10 bg-slate-900/40 dark:bg-slate-900/40 hover:bg-white/5'
+            className={`group relative overflow-hidden rounded-xl border transition-all cursor-pointer select-none ${selected
+                    ? 'border-blue-500/50 bg-blue-500/10'
+                    : isDragOver
+                        ? 'border-emerald-500/50 bg-emerald-500/10'
+                        : 'border-white/10 bg-slate-900/40 dark:bg-slate-900/40 hover:bg-white/5'
                 }`}
-            onClick={() => item.isDir && onNavigate(item)}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
             onContextMenu={(e) => onContextMenu?.(e, item)}
             draggable={!isRenaming}
             onDragStart={handleDragStart}
@@ -127,8 +145,8 @@ export function FileCard({
                 <button
                     onClick={() => onToggleSelect?.(item.name)}
                     className={`p-1 rounded transition-all ${selected
-                        ? 'text-blue-400 bg-blue-500/20'
-                        : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
+                            ? 'text-blue-400 bg-blue-500/20'
+                            : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 bg-slate-800/80'
                         }`}
                 >
                     {selected ? <CheckSquare size={16} /> : <Square size={16} />}
@@ -139,7 +157,6 @@ export function FileCard({
                 {/* Icon with Encryption Indicator */}
                 <div className={`relative p-4 rounded-xl mb-3 ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800/50 text-slate-400'} group-hover:scale-110 transition-transform`}>
                     <FileIcon name={item.name} isDir={item.isDir} size={32} />
-                    {/* Encryption Status Indicator */}
                     {isEncrypted && (
                         <div className={`absolute -top-1 -right-1 p-1 rounded-full ${isUnlocked ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
                             {isUnlocked ? (
@@ -159,13 +176,14 @@ export function FileCard({
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
                             onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleRename();
+                                if (e.key === 'Enter') handleRenameSubmit();
                                 if (e.key === 'Escape') cancelRename();
                             }}
                             className="flex-1 px-2 py-1 text-xs bg-slate-800 border border-white/10 rounded text-white focus:outline-none focus:border-blue-500"
                             autoFocus
+                            onClick={(e) => e.stopPropagation()}
                         />
-                        <button onClick={handleRename} className="p-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                        <button onClick={handleRenameSubmit} className="p-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
                             <Check size={14} />
                         </button>
                         <button onClick={cancelRename} className="p-1 rounded bg-rose-500/20 text-rose-400 hover:bg-rose-500/30">
@@ -195,7 +213,10 @@ export function FileCard({
                         </button>
                     )}
                     <button
-                        onClick={startRename}
+                        onClick={() => {
+                            setIsRenaming(true);
+                            setNewName(item.name);
+                        }}
                         className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all"
                         title="Rename"
                     >
@@ -219,4 +240,4 @@ export function FileCard({
             </div>
         </div>
     );
-}
+});

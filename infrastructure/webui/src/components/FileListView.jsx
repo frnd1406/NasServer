@@ -1,12 +1,10 @@
-// File List View component (table view) with multi-select support
-
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { Edit3, Check, X, Eye, Download, Trash2, FolderOpen, Archive, CheckSquare, Square, Lock, Unlock } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 import { formatFileSize, canPreview } from '../utils/fileUtils';
 import { useVault } from '../context/VaultContext';
 
-export function FileListView({
+export const FileListView = memo(function FileListView({
     files,
     onNavigate,
     onPreview,
@@ -22,23 +20,19 @@ export function FileListView({
     const [renamingItem, setRenamingItem] = useState(null);
     const [newName, setNewName] = useState('');
 
-    // Vault state for encryption indicator
+    // Vault state
     const { isUnlocked } = useVault();
 
-    // Trigger rename from context menu
+    // Trigger rename from context menu or prop
     useEffect(() => {
         if (renameTarget) {
-            startRename(renameTarget);
+            setRenamingItem(renameTarget);
+            setNewName(renameTarget.name);
             onRenameComplete?.();
         }
-    }, [renameTarget]);
+    }, [renameTarget, onRenameComplete]);
 
-    const startRename = (item) => {
-        setRenamingItem(item);
-        setNewName(item.name);
-    };
-
-    const handleRename = async () => {
+    const handleRenameSubmit = async () => {
         if (renamingItem && newName && newName !== renamingItem.name) {
             await onRename(renamingItem, newName);
         }
@@ -49,6 +43,22 @@ export function FileListView({
     const cancelRename = () => {
         setRenamingItem(null);
         setNewName('');
+    };
+
+    const handleRowClick = (e, item) => {
+        // Single click: Select
+        e.preventDefault();
+        onToggleSelect?.(item.name);
+    };
+
+    const handleRowDoubleClick = (e, item) => {
+        // Double click: Navigate or Preview
+        e.preventDefault();
+        if (item.isDir) {
+            onNavigate(item);
+        } else if (canPreview(item.name)) {
+            onPreview(item);
+        }
     };
 
     if (files.length === 0) {
@@ -81,18 +91,20 @@ export function FileListView({
                         return (
                             <tr
                                 key={item.name}
-                                className={`group border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer ${selected ? 'bg-blue-500/10' : ''
+                                className={`group border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors cursor-pointer select-none ${selected ? 'bg-blue-500/10' : ''
                                     }`}
-                                onClick={() => item.isDir && onNavigate(item)}
+                                onClick={(e) => handleRowClick(e, item)}
+                                onDoubleClick={(e) => handleRowDoubleClick(e, item)}
                                 onContextMenu={(e) => onContextMenu?.(e, item)}
+                                draggable={!isRenaming} // Basic drag support
                             >
                                 {/* Checkbox */}
                                 <td className="py-4 px-2" onClick={(e) => e.stopPropagation()}>
                                     <button
                                         onClick={() => onToggleSelect?.(item.name)}
                                         className={`p-1 rounded transition-all ${selected
-                                            ? 'text-blue-400'
-                                            : 'text-slate-500 hover:text-slate-300'
+                                                ? 'text-blue-400'
+                                                : 'text-slate-500 hover:text-slate-300'
                                             }`}
                                     >
                                         {selected ? <CheckSquare size={18} /> : <Square size={18} />}
@@ -110,13 +122,14 @@ export function FileListView({
                                                 value={newName}
                                                 onChange={(e) => setNewName(e.target.value)}
                                                 onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') handleRename();
+                                                    if (e.key === 'Enter') handleRenameSubmit();
                                                     if (e.key === 'Escape') cancelRename();
                                                 }}
                                                 className="flex-1 px-3 py-1.5 bg-slate-800 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
                                                 autoFocus
+                                                onClick={(e) => e.stopPropagation()}
                                             />
-                                            <button onClick={handleRename} className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                                            <button onClick={handleRenameSubmit} className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
                                                 <Check size={14} />
                                             </button>
                                             <button onClick={cancelRename} className="p-2 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30">
@@ -128,7 +141,6 @@ export function FileListView({
                                             <div className={`p-2 rounded-lg ${item.isDir ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-400'}`}>
                                                 <FileIcon name={item.name} isDir={item.isDir} size={16} />
                                             </div>
-                                            {/* Encryption Status Indicator */}
                                             {isEncrypted && (
                                                 <span className={`flex items-center ${isUnlocked ? 'text-emerald-400' : 'text-rose-400'}`}>
                                                     {isUnlocked ? <Unlock size={14} /> : <Lock size={14} />}
@@ -158,7 +170,10 @@ export function FileListView({
                                             </button>
                                         )}
                                         <button
-                                            onClick={() => startRename(item)}
+                                            onClick={() => {
+                                                setRenamingItem(item);
+                                                setNewName(item.name);
+                                            }}
                                             className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all"
                                             title="Rename"
                                         >
@@ -187,4 +202,4 @@ export function FileListView({
             </table>
         </div>
     );
-}
+});

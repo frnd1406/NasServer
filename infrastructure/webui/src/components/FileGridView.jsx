@@ -1,9 +1,10 @@
 // File Grid View component with selection support
 
+import React, { memo } from 'react';
 import { FolderOpen } from 'lucide-react';
 import { FileCard } from './FileCard';
 
-export function FileGridView({
+export const FileGridView = memo(function FileGridView({
     files,
     onNavigate,
     onPreview,
@@ -47,4 +48,4 @@ export function FileGridView({
             ))}
         </div>
     );
-}
+});
