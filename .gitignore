@@ -116,3 +116,12 @@ infrastructure/secrets/
 # Compiled Go binaries
 infrastructure/analysis/analysis-agent
 infrastructure/monitoring/monitoring-agent
+infrastructure/pentester/nas_pentest
+
+# Security & Compliance Artifacts
+artifacts/
+security_report.md
+scan_results/
+*.pdf
+*.docx
+
