@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { fetchFileContent } from '../api/files';
 
 /**
  * FilePreviewPanel - Displays file content with support for multiple file types
@@ -53,11 +54,8 @@ export function FilePreviewPanel({ files = [], currentIndex = 0, onClose, onNavi
       }
 
       // Otherwise fetch from API
-      const response = await fetch(`/api/v1/files/content?path=${encodeURIComponent(file.file_path)}`);
-      if (!response.ok) throw new Error('Failed to load file');
-
-      const data = await response.text();
-      setFileContent(data);
+      const content = await fetchFileContent(file.file_path);
+      setFileContent(content);
     } catch (err) {
       console.error('Error loading file:', err);
       setError('Datei konnte nicht geladen werden');
@@ -240,11 +238,10 @@ export function FilePreviewPanel({ files = [], currentIndex = 0, onClose, onNavi
             <div className="flex items-center gap-3">
               <p className="text-xs text-slate-400 truncate">{currentFile.file_path}</p>
               {similarity !== null && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  similarity >= 80 ? 'bg-emerald-500/20 text-emerald-400' :
+                <span className={`text-xs px-2 py-0.5 rounded-full ${similarity >= 80 ? 'bg-emerald-500/20 text-emerald-400' :
                   similarity >= 60 ? 'bg-blue-500/20 text-blue-400' :
-                  'bg-amber-500/20 text-amber-400'
-                }`}>
+                    'bg-amber-500/20 text-amber-400'
+                  }`}>
                   {similarity}% relevant
                 </span>
               )}
