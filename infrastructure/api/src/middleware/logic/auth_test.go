@@ -264,3 +264,77 @@ func TestAuthMiddleware_UserContextPropagation(t *testing.T) {
 	assert.Equal(t, userID, capturedUserID)
 	assert.Equal(t, email, capturedEmail)
 }
+
+func TestAuthMiddleware_CookieBasedToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
+	defer mr.Close()
+
+	// Generate valid token
+	userID := "cookie-user-123"
+	email := "cookie@example.com"
+	token, err := jwtService.GenerateAccessToken(userID, email)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-request-cookie")
+		c.Next()
+	})
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
+	router.GET("/protected", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"user_id": c.GetString("user_id")})
+	})
+
+	// Create request with token in cookie
+	req, _ := http.NewRequest("GET", "/protected", nil)
+	req.AddCookie(&http.Cookie{Name: "access_token", Value: token})
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should succeed via cookie
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), userID)
+}
+
+func TestAuthMiddleware_RevokedByPasswordReset(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
+	defer mr.Close()
+
+	userID := "revoked-user"
+	email := "revoked@example.com"
+
+	// First, generate a token (simulating user logged in before password reset)
+	token, err := jwtService.GenerateAccessToken(userID, email)
+	require.NoError(t, err)
+
+	// Wait 1+ second to ensure MinIAT > token's iat (JWT iat is in seconds)
+	time.Sleep(1100 * time.Millisecond)
+
+	// Simulate password reset (set MinIAT to NOW, which is after token was issued)
+	ctx := context.Background()
+	err = tokenService.InvalidateUserTokens(ctx, userID)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-revoked")
+		c.Next()
+	})
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
+	router.GET("/protected", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	})
+
+	req, _ := http.NewRequest("GET", "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	// Should be unauthorized due to MinIAT revocation
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "Session expired due to security change")
+}
