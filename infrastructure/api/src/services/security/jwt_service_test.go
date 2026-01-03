@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/nas-ai/api/src/config"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -189,4 +190,41 @@ func TestJWTService_ClaimsContent(t *testing.T) {
 	assert.Equal(t, email, claims.Email)
 	assert.NotZero(t, claims.IssuedAt)
 	assert.NotZero(t, claims.ExpiresAt)
+}
+
+func TestJWTService_ExtractClaims(t *testing.T) {
+	js := setupJWTService(t)
+
+	userID := "test-user-claims"
+	email := "claims@example.com"
+
+	// 1. Valid token
+	token, err := js.GenerateAccessToken(userID, email)
+	require.NoError(t, err)
+
+	claims, err := js.ExtractClaims(token)
+	assert.NoError(t, err)
+	assert.Equal(t, userID, claims.UserID)
+	assert.Equal(t, email, claims.Email)
+
+	// 2. Expired token (should still extract claims)
+	// Create an expired token manually
+	expiredClaims := TokenClaims{
+		UserID:    userID,
+		Email:     email,
+		TokenType: AccessToken,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+		},
+	}
+	expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
+	expiredTokenString, _ := expiredToken.SignedString(js.secret)
+
+	claims, err = js.ExtractClaims(expiredTokenString)
+	assert.NoError(t, err)
+	assert.Equal(t, userID, claims.UserID)
+
+	// 3. Invalid token (garbage)
+	_, err = js.ExtractClaims("garbage.token.string")
+	assert.Error(t, err)
 }

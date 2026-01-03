@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/nas-ai/api/src/domain/files"
 
 	"github.com/gin-gonic/gin"
@@ -186,12 +187,19 @@ func StorageDownloadHandler(storage *content.StorageManager, honeySvc *content.H
 		// SECURITY: Check for integrity checkpoint BEFORE serving
 		fullPath := filepath.Join("/mnt/data", path)
 
-		// Capture Forensic Metadata
+		// Prepare metadata for audit/forensics
+		// SECURITY FIX: Extract UserID from context for audit logging
+		userIDStr := c.GetString("user_id")
+		var userID *uuid.UUID
+		if id, err := uuid.Parse(userIDStr); err == nil {
+			userID = &id
+		}
+
 		meta := content.RequestMetadata{
 			IPAddress: c.ClientIP(),
 			UserAgent: c.Request.UserAgent(),
-			// UserID:    nil, // TODO: Extract from Auth Context if available
-			Action: "download",
+			UserID:    userID,
+			Action:    "download",
 		}
 
 		if honeySvc != nil && honeySvc.CheckAndTrigger(c.Request.Context(), fullPath, meta) {

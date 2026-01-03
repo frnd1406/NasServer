@@ -1,16 +1,16 @@
 package auth
 
 import (
-		"github.com/nas-ai/api/src/repository/auth"
-"net/http"
+	"net/http"
+
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
 
-	
-	"github.com/sirupsen/logrus"
 	"github.com/nas-ai/api/src/services/operations"
 	"github.com/nas-ai/api/src/services/security"
+	"github.com/sirupsen/logrus"
 )
 
 // ForgotPasswordRequest represents the forgot password request
@@ -200,9 +200,11 @@ func ResetPasswordHandler(
 			return
 		}
 
-		// TODO: Invalidate all existing JWT tokens for this user
-		// This requires tracking active tokens or rotating JWT secret per user
-		// For now, tokens will remain valid until expiry
+		// Invalidate all existing tokens for this user (Security)
+		if err := tokenService.InvalidateUserTokens(ctx, userID); err != nil {
+			logger.WithError(err).Error("Failed to invalidate user tokens after password reset")
+			// Non-fatal, but logged
+		}
 
 		// Audit log
 		logger.WithFields(logrus.Fields{

@@ -3,6 +3,7 @@ module github.com/nas-ai/api
 go 1.24.2
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-redis/redis/v8 v8.11.5

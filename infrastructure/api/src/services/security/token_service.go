@@ -133,3 +133,49 @@ func (s *TokenService) generateRandomToken() (string, error) {
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
 }
+
+// InvalidateUserTokens invalidates all current tokens for a user by setting a revocation timestamp
+// This is used after password resets or security events
+func (s *TokenService) InvalidateUserTokens(ctx context.Context, userID string) error {
+	// Set timestamp key "user_revocation:{userID}" to current time
+	key := fmt.Sprintf("user_revocation:%s", userID)
+	now := time.Now().Unix()
+
+	// Use a long TTL (e.g. 7 days - max refresh token life) or effectively infinite
+	// If a user doesn't login for 7 days, older tokens would expire anyway
+	err := s.redis.Set(ctx, key, now, 7*24*time.Hour).Err()
+	if err != nil {
+		s.logger.WithError(err).WithField("user_id", userID).Error("Failed to set revocation timestamp")
+		return fmt.Errorf("failed to invalidate tokens: %w", err)
+	}
+
+	s.logger.WithField("user_id", userID).Info("All user tokens invalidated (MinIAT updated)")
+	return nil
+}
+
+// IsTokenRevoked checks if a token has been implicitly revoked via MinIAT policy
+// Returns true (revoked) if Token IssuedAt < User Revocation Timestamp
+func (s *TokenService) IsTokenRevoked(ctx context.Context, userID string, tokenIssuedAtUnix int64) bool {
+	// 1. Get user revocation timestamp
+	key := fmt.Sprintf("user_revocation:%s", userID)
+	revocationTimestamp, err := s.redis.Get(ctx, key).Int64()
+	if err != nil {
+		// Key doesn't exist (no revocation) or Redis error
+		// Fail open for Redis errors (allow access) to prevent lockout if Redis is unstable
+		// Security trade-off: Availability > Strict Revocation in case of Redis failure
+		return false
+	}
+
+	// 2. Compare with token IssuedAt
+	// If Token IssuedAt < Revocation Timestamp, token is invalid
+	if tokenIssuedAtUnix < revocationTimestamp {
+		s.logger.WithFields(logrus.Fields{
+			"user_id":      userID,
+			"token_iat":    tokenIssuedAtUnix,
+			"revocation_t": revocationTimestamp,
+		}).Warn("Token rejected by MinIAT policy (Password Reset via Redis)")
+		return true
+	}
+
+	return false
+}

@@ -860,3 +860,119 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// TestValidation_Getters covers GetVaultPath, GetStatus, and GetVaultConfigFiles
+func TestValidation_Getters(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "vault-getters-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	vaultPath := filepath.Join(tempDir, "vault")
+	svc := NewEncryptionService(vaultPath, nil)
+
+	// Test GetVaultPath
+	if svc.GetVaultPath() != vaultPath {
+		t.Errorf("GetVaultPath mismatch: got %s, expected %s", svc.GetVaultPath(), vaultPath)
+	}
+
+	// Test SetVaultPath
+	newPath := filepath.Join(tempDir, "new-vault")
+	svc.SetVaultPath(newPath)
+	if svc.GetVaultPath() != newPath {
+		t.Errorf("SetVaultPath failed: got %s, expected %s", svc.GetVaultPath(), newPath)
+	}
+
+	// Reset path
+	svc.SetVaultPath(vaultPath)
+
+	// Test GetStatus (Locked/Unconfigured)
+	status := svc.GetStatus()
+	if status["configured"].(bool) {
+		t.Error("New vault should not be configured")
+	}
+	if !status["locked"].(bool) {
+		t.Error("New vault should be locked")
+	}
+
+	// Test GetVaultConfigFiles
+	configs, err := svc.GetVaultConfigFiles()
+	// Should fail because vault is not setup
+	if err == nil {
+		t.Error("GetVaultConfigFiles should fail when unconfigured")
+	} else if err != ErrVaultNotSetup {
+		t.Errorf("Expected ErrVaultNotSetup, got: %v", err)
+	}
+	if len(configs) != 0 {
+		t.Errorf("Expected 0 config files, got %d", len(configs))
+	}
+}
+
+// TestIsEncryptedFile tests file header detection
+func TestIsEncryptedFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "is-encrypted-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Create encrypted file
+	encPath := filepath.Join(tempDir, "file.enc")
+	password := "test-password"
+	f, _ := os.Create(encPath)
+	EncryptStream(password, bytes.NewReader([]byte("data")), f)
+	f.Close()
+
+	if isEnc, err := IsEncryptedFile(encPath); err != nil || !isEnc {
+		t.Errorf("IsEncryptedFile should return true, nil. Got %v, %v", isEnc, err)
+	}
+
+	// 2. Create plain file
+	plainPath := filepath.Join(tempDir, "file.txt")
+	os.WriteFile(plainPath, []byte("plain text"), 0644)
+
+	if isEnc, err := IsEncryptedFile(plainPath); err != nil || isEnc {
+		t.Errorf("IsEncryptedFile should return false, nil. Got %v, %v", isEnc, err)
+	}
+
+	// 3. Non-existent file
+	if _, err := IsEncryptedFile(filepath.Join(tempDir, "missing")); err == nil {
+		t.Error("IsEncryptedFile should return error for missing file")
+	}
+}
+
+// TestDecryptChunk tests single chunk decryption
+func TestDecryptChunk(t *testing.T) {
+	password := "chunk-password"
+	testData := make([]byte, ChunkSize*2) // 2 chunks
+	rand.Read(testData)
+
+	// Encrypt
+	var encBuf bytes.Buffer
+	EncryptStream(password, bytes.NewReader(testData), &encBuf)
+	encrypted := encBuf.Bytes()
+
+	// Header + Chunk1 + Tag (Skipped extraction as DecryptChunk reads from reader)
+	// chunk1Size := EncryptedChunkSize
+	// chunk1 := encrypted[HeaderSize : HeaderSize+chunk1Size]
+
+	// Extract salt/nonce from header
+	reader := bytes.NewReader(encrypted)
+	salt, baseNonce, _ := ReadHeader(reader)
+
+	// DecryptChunk needs a ReaderAt with correct offset logic
+	// But DecryptChunk takes the input file/reader, not just the chunk data.
+	// It reads FROM the input at calculated offset.
+	// So we pass a reader wrapping the FULL encrypted data.
+	fullReader := bytes.NewReader(encrypted)
+
+	decryptedChunk, err := DecryptChunk(password, fullReader, 0, salt, baseNonce)
+	if err != nil {
+		t.Fatalf("DecryptChunk failed: %v", err)
+	}
+
+	if !bytes.Equal(decryptedChunk, testData[:ChunkSize]) {
+		t.Error("Decrypted chunk mismatch")
+	}
+}

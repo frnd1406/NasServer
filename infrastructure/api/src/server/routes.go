@@ -54,14 +54,14 @@ func (s *Server) setupAuthRoutes() {
 		)
 		authGroup.POST("/refresh", auth.RefreshHandler(s.jwtService, s.redis, s.logger))
 		authGroup.POST("/logout",
-			logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+			logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 			auth.LogoutHandler(s.jwtService, s.redis, s.logger),
 		)
 
 		// Email verification
 		authGroup.POST("/verify-email", auth.VerifyEmailHandler(s.userRepo, s.tokenService, s.emailService, s.logger))
 		authGroup.POST("/resend-verification",
-			logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+			logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 			auth.ResendVerificationHandler(s.userRepo, s.tokenService, s.emailService, s.logger),
 		)
 
@@ -74,7 +74,7 @@ func (s *Server) setupAuthRoutes() {
 // setupAPIRoutes configures protected API endpoints
 func (s *Server) setupAPIRoutes() {
 	apiGroup := s.router.Group("/api")
-	apiGroup.Use(logic.AuthMiddleware(s.jwtService, s.redis, s.logger))
+	apiGroup.Use(logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger))
 	apiGroup.Use(logic.CSRFMiddleware(s.redis, s.logger))
 	{
 		apiGroup.GET("/profile", handlers.ProfileHandler(s.userRepo, s.logger))
@@ -137,7 +137,7 @@ func (s *Server) setupV1Routes() {
 	// Protected system settings
 	settingsV1 := v1.Group("/system")
 	settingsV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
@@ -160,7 +160,7 @@ func (s *Server) setupV1Routes() {
 	// Vault uploads (chunked)
 	vaultUploadV1 := v1.Group("/vault/upload")
 	vaultUploadV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
@@ -174,7 +174,7 @@ func (s *Server) setupV1Routes() {
 func (s *Server) setupStorageRoutes() {
 	storageV1 := s.router.Group("/api/v1/storage")
 	storageV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
@@ -204,7 +204,7 @@ func (s *Server) setupEncryptedStorageRoutes() {
 
 	encV1 := s.router.Group("/api/v1/encrypted")
 	encV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
@@ -221,7 +221,7 @@ func (s *Server) setupEncryptedStorageRoutes() {
 func (s *Server) setupBackupRoutes() {
 	backupV1 := s.router.Group("/api/v1/backups")
 	backupV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
@@ -243,7 +243,7 @@ func (s *Server) setupBackupRoutes() {
 func (s *Server) setupAdminRoutes() {
 	adminV1 := s.router.Group("/api/v1/admin")
 	adminV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 		logic.AdminOnly(s.userRepo, s.logger),
 	)
@@ -263,7 +263,7 @@ func (s *Server) setupAdminRoutes() {
 func (s *Server) setupSystemRoutes() {
 	sysV1 := s.router.Group("/api/v1/sys")
 	sysV1.Use(
-		logic.AuthMiddleware(s.jwtService, s.redis, s.logger),
+		logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
 		logic.CSRFMiddleware(s.redis, s.logger),
 		logic.AdminOnly(s.userRepo, s.logger),
 	)

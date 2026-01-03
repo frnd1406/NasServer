@@ -1,19 +1,17 @@
 package logic
 
 import (
-			"github.com/nas-ai/api/src/domain/auth"
-"github.com/nas-ai/api/src/repository/auth"
-"context"
 	"net/http"
 	"strings"
+
+	"github.com/nas-ai/api/src/domain/auth"
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
 
-
-	
-	"github.com/sirupsen/logrus"
 	"github.com/nas-ai/api/src/services/security"
+	"github.com/sirupsen/logrus"
 )
 
 // Cookie name for access token (must match handlers/cookies.go)
@@ -41,7 +39,7 @@ func getAccessTokenFromRequest(c *gin.Context) string {
 
 // AuthMiddleware validates JWT tokens and checks blacklist
 // Supports both cookie-based (new) and header-based (legacy) token retrieval
-func AuthMiddleware(jwtService *security.JWTService, redis *database.RedisClient, logger *logrus.Logger) gin.HandlerFunc {
+func AuthMiddleware(jwtService *security.JWTService, tokenService *security.TokenService, redis *database.RedisClient, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -79,7 +77,7 @@ func AuthMiddleware(jwtService *security.JWTService, redis *database.RedisClient
 		}
 
 		// Check if token is blacklisted (logout revocation)
-		ctx := context.Background()
+		ctx := c.Request.Context()
 		blacklisted, err := redis.Get(ctx, "blacklist:"+tokenString).Result()
 		if err == nil && blacklisted == "1" {
 			logger.WithFields(logrus.Fields{
@@ -90,6 +88,23 @@ func AuthMiddleware(jwtService *security.JWTService, redis *database.RedisClient
 				"error": gin.H{
 					"code":       "unauthorized",
 					"message":    "Token has been revoked",
+					"request_id": requestID,
+				},
+			})
+			c.Abort()
+			return
+		}
+
+		// Check if user tokens have been revoked via MinIAT (Password Reset)
+		if tokenService.IsTokenRevoked(ctx, claims.UserID, claims.IssuedAt.Time.Unix()) {
+			logger.WithFields(logrus.Fields{
+				"request_id": requestID,
+				"user_id":    claims.UserID,
+			}).Warn("Token revoked by password reset (MinIAT)")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": gin.H{
+					"code":       "unauthorized",
+					"message":    "Session expired due to security change",
 					"request_id": requestID,
 				},
 			})

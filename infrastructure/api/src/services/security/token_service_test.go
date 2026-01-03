@@ -271,6 +271,39 @@ func TestTokenService_SingleUseToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid or expired token")
 }
 
+func TestTokenService_UserRevocation(t *testing.T) {
+	ts, mr := setupTokenService(t)
+	defer mr.Close()
+
+	ctx := context.Background()
+	userID := "user-revocation-test"
+
+	// 1. Initial state: No revocation
+	tokenIssuedAt := time.Now().Unix()
+	revoked := ts.IsTokenRevoked(ctx, userID, tokenIssuedAt)
+	assert.False(t, revoked, "Token should not be revoked initially")
+
+	// 2. Invalidate tokens
+	err := ts.InvalidateUserTokens(ctx, userID)
+	require.NoError(t, err)
+
+	// Check Redis state
+	key := "user_revocation:" + userID
+	revocationTimeStr, err := ts.redis.Get(ctx, key).Result()
+	require.NoError(t, err)
+	assert.NotEmpty(t, revocationTimeStr)
+
+	// 3. Check token issued BEFORE revocation
+	oldTokenIssuedAt := time.Now().Add(-1 * time.Hour).Unix()
+	revoked = ts.IsTokenRevoked(ctx, userID, oldTokenIssuedAt)
+	assert.True(t, revoked, "Old token should be revoked")
+
+	// 4. Check token issued AFTER revocation
+	newTokenIssuedAt := time.Now().Add(1 * time.Hour).Unix()
+	revoked = ts.IsTokenRevoked(ctx, userID, newTokenIssuedAt)
+	assert.False(t, revoked, "New token should be valid")
+}
+
 func ensureTCPAllowed(t *testing.T) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

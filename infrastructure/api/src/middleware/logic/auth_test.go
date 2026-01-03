@@ -13,14 +13,14 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
-	
+
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/nas-ai/api/src/services/security"
 )
 
-func setupAuthMiddleware(t *testing.T) (*security.JWTService, *database.RedisClient, *miniredis.Miniredis, *logrus.Logger) {
+func setupAuthMiddleware(t *testing.T) (*security.JWTService, *database.RedisClient, *security.TokenService, *miniredis.Miniredis, *logrus.Logger) {
 	ensureTCPAllowed(t)
 
 	// Setup JWT Service
@@ -45,7 +45,9 @@ func setupAuthMiddleware(t *testing.T) (*security.JWTService, *database.RedisCli
 		Client: client,
 	}
 
-	return jwtService, redisClient, mr, logger
+	tokenService := security.NewTokenService(redisClient, logger)
+
+	return jwtService, redisClient, tokenService, mr, logger
 }
 
 func ensureTCPAllowed(t *testing.T) {
@@ -60,7 +62,7 @@ func ensureTCPAllowed(t *testing.T) {
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	// Generate valid token
@@ -75,7 +77,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -93,7 +95,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 
 func TestAuthMiddleware_MissingAuthHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	router := gin.New()
@@ -101,7 +103,7 @@ func TestAuthMiddleware_MissingAuthHeader(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -118,7 +120,7 @@ func TestAuthMiddleware_MissingAuthHeader(t *testing.T) {
 
 func TestAuthMiddleware_InvalidHeaderFormat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	router := gin.New()
@@ -126,7 +128,7 @@ func TestAuthMiddleware_InvalidHeaderFormat(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -166,7 +168,7 @@ func TestAuthMiddleware_InvalidHeaderFormat(t *testing.T) {
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	router := gin.New()
@@ -174,7 +176,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -191,7 +193,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 
 func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	// Generate valid token
@@ -210,7 +212,7 @@ func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
@@ -228,7 +230,7 @@ func TestAuthMiddleware_BlacklistedToken(t *testing.T) {
 
 func TestAuthMiddleware_UserContextPropagation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jwtService, redisClient, mr, logger := setupAuthMiddleware(t)
+	jwtService, redisClient, tokenService, mr, logger := setupAuthMiddleware(t)
 	defer mr.Close()
 
 	userID := "test-user-456"
@@ -244,7 +246,7 @@ func TestAuthMiddleware_UserContextPropagation(t *testing.T) {
 		c.Set("request_id", "test-request-123")
 		c.Next()
 	})
-	router.Use(AuthMiddleware(jwtService, redisClient, logger))
+	router.Use(AuthMiddleware(jwtService, tokenService, redisClient, logger))
 	router.GET("/protected", func(c *gin.Context) {
 		capturedUserID = c.GetString("user_id")
 		capturedEmail = c.GetString("user_email")
