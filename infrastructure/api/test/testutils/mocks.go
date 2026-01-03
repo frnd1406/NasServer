@@ -144,3 +144,82 @@ func (m *MockTokenService) IsTokenRevoked(ctx context.Context, userID string, ia
 	args := m.Called(ctx, userID, iat)
 	return args.Bool(0), args.Error(1)
 }
+
+// ============================================================
+// Mock: StorageManager (for file uploads)
+// ============================================================
+
+// MockStorageManager mocks content.StorageManager
+type MockStorageManager struct {
+	mock.Mock
+}
+
+// SaveResult mimics content.SaveResult for mock returns
+type MockSaveResult struct {
+	Path      string
+	FileID    string
+	MimeType  string
+	SizeBytes int64
+	Checksum  string
+}
+
+func (m *MockStorageManager) Save(path string, reader interface{}, header interface{}) (*MockSaveResult, error) {
+	args := m.Called(path, reader, header)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*MockSaveResult), args.Error(1)
+}
+
+func (m *MockStorageManager) List(path string) ([]interface{}, error) {
+	args := m.Called(path)
+	return args.Get(0).([]interface{}), args.Error(1)
+}
+
+func (m *MockStorageManager) Delete(path string) error {
+	args := m.Called(path)
+	return args.Error(0)
+}
+
+// ============================================================
+// Mock: EncryptionPolicyService
+// ============================================================
+
+type MockEncryptionPolicyService struct {
+	mock.Mock
+}
+
+func (m *MockEncryptionPolicyService) DetermineMode(filename string, size int64, override string) string {
+	args := m.Called(filename, size, override)
+	return args.String(0)
+}
+
+// ============================================================
+// Mock: HoneyfileService
+// ============================================================
+
+type MockHoneyfileService struct {
+	mock.Mock
+}
+
+func (m *MockHoneyfileService) IsHoneyfile(path string) bool {
+	args := m.Called(path)
+	return args.Bool(0)
+}
+
+func (m *MockHoneyfileService) CheckAndTrigger(ctx context.Context, path string, meta interface{}) bool {
+	args := m.Called(ctx, path, meta)
+	return args.Bool(0)
+}
+
+// ============================================================
+// Mock: AIAgentService
+// ============================================================
+
+type MockAIAgentService struct {
+	mock.Mock
+}
+
+func (m *MockAIAgentService) NotifyUpload(path, fileID, mimeType, text string) {
+	m.Called(path, fileID, mimeType, text)
+}

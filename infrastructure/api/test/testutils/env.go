@@ -15,11 +15,17 @@ import (
 // TestEnv holds all dependencies needed for integration tests.
 // It separates mock initialization from router wiring (SRP).
 type TestEnv struct {
-	// Mocks
+	// Auth Mocks
 	UserRepo     *MockUserRepository
 	JWTService   *MockJWTService
 	PasswordSvc  *MockPasswordService
 	TokenService *MockTokenService
+
+	// File Service Mocks
+	StorageManager   *MockStorageManager
+	PolicyService    *MockEncryptionPolicyService
+	HoneyfileService *MockHoneyfileService
+	AIService        *MockAIAgentService
 
 	// Real Services (with fake backends)
 	RedisClient *database.RedisClient
@@ -56,11 +62,17 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	}
 
 	return &TestEnv{
-		// Mocks
+		// Auth Mocks
 		UserRepo:     new(MockUserRepository),
 		JWTService:   new(MockJWTService),
 		PasswordSvc:  new(MockPasswordService),
 		TokenService: new(MockTokenService),
+
+		// File Service Mocks
+		StorageManager:   new(MockStorageManager),
+		PolicyService:    new(MockEncryptionPolicyService),
+		HoneyfileService: new(MockHoneyfileService),
+		AIService:        new(MockAIAgentService),
 
 		// Real with fakes
 		RedisClient: redisClient,
