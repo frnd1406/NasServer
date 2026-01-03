@@ -28,6 +28,7 @@ type TestEnv struct {
 	AIService        *MockAIAgentService
 
 	// Real Services (with fake backends)
+	DB          *database.DB // Test database (in-memory SQLite)
 	RedisClient *database.RedisClient
 	Config      *config.Config
 	Logger      *logrus.Logger
@@ -61,6 +62,12 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		InviteCode:   "TEST_INVITE",
 	}
 
+	// Create in-memory SQLite database for testing
+	// This allows us to test real SQL queries without needing a full Postgres instance
+	testDB, err := database.NewTestDatabase(logger)
+	require.NoError(t, err)
+	t.Cleanup(func() { testDB.Close() })
+
 	return &TestEnv{
 		// Auth Mocks
 		UserRepo:     new(MockUserRepository),
@@ -75,6 +82,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		AIService:        new(MockAIAgentService),
 
 		// Real with fakes
+		DB:          testDB,
 		RedisClient: redisClient,
 		Config:      cfg,
 		Logger:      logger,

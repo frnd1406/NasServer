@@ -21,27 +21,15 @@ func NewRealRouter(env *TestEnv) *gin.Engine {
 
 	// ============================================================
 	// PUBLIC AUTH ROUTES (no auth middleware)
-	// Uses TestableHandlers with mocked dependencies
+	// Uses REAL handlers with real dependencies
 	// ============================================================
 	authGroup := router.Group("/auth")
 	{
-		// Register uses TestableRegisterHandler with mocked deps
-		authGroup.POST("/register", TestableRegisterHandler(
-			env.Config,
-			env.UserRepo,    // Interface: UserRepositoryInterface
-			env.JWTService,  // Interface: JWTServiceInterface
-			env.PasswordSvc, // Interface: PasswordServiceInterface
-			env.Logger,
-		))
+		// Register uses REAL RegisterHandler
+		authGroup.POST("/register", TestableRegisterHandler(env))
 
-		// Login uses TestableLoginHandler with mocked deps
-		authGroup.POST("/login", TestableLoginHandler(
-			env.UserRepo,
-			env.JWTService,
-			env.PasswordSvc,
-			env.RedisClient,
-			env.Logger,
-		))
+		// Login uses REAL LoginHandler
+		authGroup.POST("/login", TestableLoginHandler(env))
 	}
 
 	// ============================================================
