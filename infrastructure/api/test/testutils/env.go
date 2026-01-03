@@ -7,6 +7,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
@@ -75,4 +76,10 @@ func (e *TestEnv) ResetMocks() {
 	e.JWTService = new(MockJWTService)
 	e.PasswordSvc = new(MockPasswordService)
 	e.TokenService = new(MockTokenService)
+}
+
+// NewRealJWTService creates a real JWTService using TestEnv config.
+// Use this when you need actual JWT generation/validation in tests.
+func NewRealJWTService(env *TestEnv) (*security.JWTService, error) {
+	return security.NewJWTService(env.Config, env.Logger)
 }
