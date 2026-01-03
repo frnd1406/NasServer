@@ -1,15 +1,14 @@
 package auth
 
 import (
-		"github.com/nas-ai/api/src/repository/auth"
-"net/http"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
 	"github.com/nas-ai/api/src/middleware/logic"
-
-
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
 	"github.com/nas-ai/api/src/services/security"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -39,9 +38,9 @@ type LoginResponse struct {
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /auth/login [post]
 func LoginHandler(
-	userRepo *auth_repo.UserRepository,
-	jwtService *security.JWTService,
-	passwordService *security.PasswordService,
+	userRepo auth_repo.UserRepositoryInterface,
+	jwtService security.JWTServiceInterface,
+	passwordService security.PasswordServiceInterface,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {

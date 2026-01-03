@@ -62,7 +62,7 @@ type renameRequest struct {
 	NewName string `json:"newName" binding:"required"`
 }
 
-func StorageListHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageListHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -79,7 +79,7 @@ func StorageListHandler(storage *content.StorageManager, logger *logrus.Logger) 
 	}
 }
 
-func StorageUploadHandler(storage *content.StorageManager, policyService *security.EncryptionPolicyService, honeySvc *content.HoneyfileService, aiService *intelligence.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageUploadHandler(storage content.StorageService, policyService security.EncryptionPolicyServiceInterface, honeySvc content.HoneyfileServiceInterface, aiService intelligence.AIAgentServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -175,7 +175,7 @@ func StorageUploadHandler(storage *content.StorageManager, policyService *securi
 	}
 }
 
-func StorageDownloadHandler(storage *content.StorageManager, honeySvc *content.HoneyfileService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDownloadHandler(storage content.StorageService, honeySvc content.HoneyfileServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -226,7 +226,7 @@ func StorageDownloadHandler(storage *content.StorageManager, honeySvc *content.H
 	}
 }
 
-func StorageDeleteHandler(storage *content.StorageManager, aiService *intelligence.AIAgentService, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDeleteHandler(storage content.StorageService, aiService intelligence.AIAgentServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -262,7 +262,7 @@ func StorageDeleteHandler(storage *content.StorageManager, aiService *intelligen
 	}
 }
 
-func StorageTrashListHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashListHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		items, err := storage.ListTrash()
@@ -274,7 +274,7 @@ func StorageTrashListHandler(storage *content.StorageManager, logger *logrus.Log
 	}
 }
 
-func StorageTrashRestoreHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashRestoreHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		id := c.Param("id")
@@ -290,7 +290,7 @@ func StorageTrashRestoreHandler(storage *content.StorageManager, logger *logrus.
 	}
 }
 
-func StorageTrashDeleteHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashDeleteHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		id := c.Param("id")
@@ -307,7 +307,7 @@ func StorageTrashDeleteHandler(storage *content.StorageManager, logger *logrus.L
 }
 
 // StorageTrashEmptyHandler permanently deletes ALL items from trash
-func StorageTrashEmptyHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageTrashEmptyHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -343,7 +343,7 @@ func StorageTrashEmptyHandler(storage *content.StorageManager, logger *logrus.Lo
 	}
 }
 
-func StorageRenameHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageRenameHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		var req renameRequest
@@ -366,7 +366,7 @@ type moveRequest struct {
 }
 
 // StorageMoveHandler moves a file or folder to a new location
-func StorageMoveHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageMoveHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		var req moveRequest
@@ -445,7 +445,7 @@ func StorageMoveHandler(storage *content.StorageManager, logger *logrus.Logger) 
 }
 
 // StorageDownloadZipHandler downloads a directory as a ZIP file
-func StorageDownloadZipHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageDownloadZipHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -560,7 +560,7 @@ type batchDownloadRequest struct {
 }
 
 // StorageBatchDownloadHandler downloads multiple files as a ZIP
-func StorageBatchDownloadHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageBatchDownloadHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 
@@ -690,7 +690,7 @@ func StorageBatchDownloadHandler(storage *content.StorageManager, logger *logrus
 }
 
 // StorageMkdirHandler creates a new directory
-func StorageMkdirHandler(storage *content.StorageManager, logger *logrus.Logger) gin.HandlerFunc {
+func StorageMkdirHandler(storage content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 

@@ -18,7 +18,7 @@ import (
 func TestRealAuthMiddleware_ValidToken(t *testing.T) {
 	// Setup with real services backed by miniredis
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewRealRouter(env)
+	router := testutils.NewTestRouter(env)
 
 	// Generate a real JWT token using the real JWTService
 	jwtService, err := testutils.NewRealJWTService(env)
@@ -41,7 +41,7 @@ func TestRealAuthMiddleware_ValidToken(t *testing.T) {
 
 func TestRealAuthMiddleware_NoToken(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewRealRouter(env)
+	router := testutils.NewTestRouter(env)
 
 	// Test protected endpoint without token
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -55,7 +55,7 @@ func TestRealAuthMiddleware_NoToken(t *testing.T) {
 
 func TestRealAuthMiddleware_InvalidToken(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewRealRouter(env)
+	router := testutils.NewTestRouter(env)
 
 	// Test with invalid token
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -70,7 +70,7 @@ func TestRealAuthMiddleware_InvalidToken(t *testing.T) {
 
 func TestRealAuthMiddleware_CookieAuth(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewRealRouter(env)
+	router := testutils.NewTestRouter(env)
 
 	// Generate real token
 	jwtService, err := testutils.NewRealJWTService(env)

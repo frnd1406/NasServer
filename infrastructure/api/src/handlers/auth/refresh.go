@@ -35,7 +35,7 @@ type RefreshResponse struct {
 // @Failure 401 {object} map[string]interface{} "Invalid or expired refresh token"
 // @Router /auth/refresh [post]
 func RefreshHandler(
-	jwtService *security.JWTService,
+	jwtService security.JWTServiceInterface,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {

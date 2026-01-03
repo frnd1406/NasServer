@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nas-ai/api/src/database"
-	
-	"github.com/sirupsen/logrus"
 	"github.com/nas-ai/api/src/services/security"
+
+	"github.com/sirupsen/logrus"
 )
 
 // LogoutHandler godoc
@@ -24,7 +24,7 @@ import (
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Router /auth/logout [post]
 func LogoutHandler(
-	jwtService *security.JWTService,
+	jwtService security.JWTServiceInterface,
 	redis *database.RedisClient,
 	logger *logrus.Logger,
 ) gin.HandlerFunc {

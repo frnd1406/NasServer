@@ -39,7 +39,7 @@ func getAccessTokenFromRequest(c *gin.Context) string {
 
 // AuthMiddleware validates JWT tokens and checks blacklist
 // Supports both cookie-based (new) and header-based (legacy) token retrieval
-func AuthMiddleware(jwtService *security.JWTService, tokenService *security.TokenService, redis *database.RedisClient, logger *logrus.Logger) gin.HandlerFunc {
+func AuthMiddleware(jwtService security.JWTServiceInterface, tokenService security.TokenServiceInterface, redis *database.RedisClient, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 

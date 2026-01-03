@@ -10,11 +10,12 @@ import (
 
 	"github.com/nas-ai/api/src/services/content"
 	"github.com/nas-ai/api/src/services/intelligence"
+	"github.com/nas-ai/api/src/services/security"
 	"github.com/sirupsen/logrus"
 )
 
 // EncryptedStorageListHandler lists encrypted files
-func EncryptedStorageListHandler(encStorage *content.EncryptedStorageService, logger *logrus.Logger) gin.HandlerFunc {
+func EncryptedStorageListHandler(encStorage content.EncryptedStorageServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -51,7 +52,7 @@ func EncryptedStorageListHandler(encStorage *content.EncryptedStorageService, lo
 
 // EncryptedStorageUploadHandler uploads and encrypts a file
 // If aiFeeder is provided, it also triggers AI indexing of the encrypted content
-func EncryptedStorageUploadHandler(encStorage *content.EncryptedStorageService, aiFeeder *intelligence.SecureAIFeeder, logger *logrus.Logger) gin.HandlerFunc {
+func EncryptedStorageUploadHandler(encStorage content.EncryptedStorageServiceInterface, aiFeeder *intelligence.SecureAIFeeder, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
@@ -133,7 +134,7 @@ func EncryptedStorageUploadHandler(encStorage *content.EncryptedStorageService, 
 }
 
 // EncryptedStorageDownloadHandler downloads and decrypts a file
-func EncryptedStorageDownloadHandler(encStorage *content.EncryptedStorageService, logger *logrus.Logger) gin.HandlerFunc {
+func EncryptedStorageDownloadHandler(encStorage content.EncryptedStorageServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -176,7 +177,7 @@ func EncryptedStorageDownloadHandler(encStorage *content.EncryptedStorageService
 }
 
 // EncryptedStorageDeleteHandler deletes an encrypted file
-func EncryptedStorageDeleteHandler(encStorage *content.EncryptedStorageService, logger *logrus.Logger) gin.HandlerFunc {
+func EncryptedStorageDeleteHandler(encStorage content.EncryptedStorageServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")
@@ -201,9 +202,8 @@ func EncryptedStorageDeleteHandler(encStorage *content.EncryptedStorageService, 
 }
 
 // EncryptedStorageStatusHandler returns encryption status
-func EncryptedStorageStatusHandler(encStorage *content.EncryptedStorageService) gin.HandlerFunc {
+func EncryptedStorageStatusHandler(encStorage content.EncryptedStorageServiceInterface, encService security.EncryptionServiceInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		encService := encStorage.GetEncryptionService()
 
 		c.JSON(http.StatusOK, gin.H{
 			"enabled":    encStorage.IsEncryptionEnabled(),
@@ -215,7 +215,7 @@ func EncryptedStorageStatusHandler(encStorage *content.EncryptedStorageService) 
 }
 
 // EncryptedStoragePreviewHandler decrypts and streams file for preview (images, etc)
-func EncryptedStoragePreviewHandler(encStorage *content.EncryptedStorageService, logger *logrus.Logger) gin.HandlerFunc {
+func EncryptedStoragePreviewHandler(encStorage content.EncryptedStorageServiceInterface, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.Query("path")

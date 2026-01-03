@@ -9,25 +9,35 @@ import (
 )
 
 // ============================================================
-// REAL HANDLER WRAPPERS
+// HELPERS
+// ============================================================
+
+// MakeRealUserRepository creates a real UserRepository connected to TestEnv DB
+func MakeRealUserRepository(env *TestEnv) *auth_repo.UserRepository {
+	return auth_repo.NewUserRepository(env.DB, env.Logger)
+}
+
+// MakeTestEmailService creates a real EmailService configured for testing (won't send)
+func MakeTestEmailService(env *TestEnv) *operations.EmailService {
+	return operations.NewEmailService(env.Config, env.Logger)
+}
+
+// ============================================================
+// REAL HANDLER WRAPPERS (Deprecated usage - prefer NewTestRouter)
 // These import and call the REAL production handlers
 // ============================================================
 
-// TestableRegisterHandler wraps the REAL RegisterHandler from src/handlers/auth
-// It creates real service instances configured for testing
 func TestableRegisterHandler(env *TestEnv) gin.HandlerFunc {
 	// Create REAL repository (uses in-memory SQLite for tests)
-	userRepo := auth_repo.NewUserRepository(env.DB, env.Logger)
+	userRepo := MakeRealUserRepository(env)
 
 	// Create REAL services
 	jwtService, _ := security.NewJWTService(env.Config, env.Logger)
 	passwordService := security.NewPasswordService()
 	tokenService := security.NewTokenService(env.RedisClient, env.Logger)
+	emailService := MakeTestEmailService(env)
 
-	// Create REAL email service (configured for test mode - won't actually send emails)
-	emailService := operations.NewEmailService(env.Config, env.Logger)
-
-	// Call the REAL handler constructor
+	// Call the REAL handler constructor (now accepting interfaces)
 	return authhandlers.RegisterHandler(
 		env.Config,
 		userRepo,
@@ -40,20 +50,33 @@ func TestableRegisterHandler(env *TestEnv) gin.HandlerFunc {
 	)
 }
 
-// TestableLoginHandler wraps the REAL LoginHandler from src/handlers/auth
 func TestableLoginHandler(env *TestEnv) gin.HandlerFunc {
-	// Create REAL repository
-	userRepo := auth_repo.NewUserRepository(env.DB, env.Logger)
-
-	// Create REAL services
+	userRepo := MakeRealUserRepository(env)
 	jwtService, _ := security.NewJWTService(env.Config, env.Logger)
 	passwordService := security.NewPasswordService()
 
-	// Call the REAL handler constructor
 	return authhandlers.LoginHandler(
 		userRepo,
 		jwtService,
 		passwordService,
+		env.RedisClient,
+		env.Logger,
+	)
+}
+
+func TestableRefreshHandler(env *TestEnv) gin.HandlerFunc {
+	jwtService, _ := security.NewJWTService(env.Config, env.Logger)
+	return authhandlers.RefreshHandler(
+		jwtService,
+		env.RedisClient,
+		env.Logger,
+	)
+}
+
+func TestableLogoutHandler(env *TestEnv) gin.HandlerFunc {
+	jwtService, _ := security.NewJWTService(env.Config, env.Logger)
+	return authhandlers.LogoutHandler(
+		jwtService,
 		env.RedisClient,
 		env.Logger,
 	)

@@ -1,8 +1,7 @@
 package auth
 
 import (
-		"github.com/nas-ai/api/src/repository/auth"
-"crypto/subtle"
+	"crypto/subtle"
 	"net/http"
 	"regexp"
 
@@ -10,7 +9,7 @@ import (
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
 	"github.com/nas-ai/api/src/middleware/logic"
-
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
 
 	"github.com/nas-ai/api/src/services/operations"
 	"github.com/nas-ai/api/src/services/security"
@@ -49,10 +48,10 @@ type RegisterResponse struct {
 // @Router /auth/register [post]
 func RegisterHandler(
 	cfg *config.Config,
-	userRepo *auth_repo.UserRepository,
-	jwtService *security.JWTService,
-	passwordService *security.PasswordService,
-	tokenService *security.TokenService,
+	userRepo auth_repo.UserRepositoryInterface,
+	jwtService security.JWTServiceInterface,
+	passwordService security.PasswordServiceInterface,
+	tokenService security.TokenServiceInterface,
 	emailService *operations.EmailService,
 	redis *database.RedisClient,
 	logger *logrus.Logger,

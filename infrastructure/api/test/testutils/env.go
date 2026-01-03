@@ -22,7 +22,7 @@ type TestEnv struct {
 	TokenService *MockTokenService
 
 	// File Service Mocks
-	StorageManager   *MockStorageManager
+	StorageService   *MockStorageService
 	PolicyService    *MockEncryptionPolicyService
 	HoneyfileService *MockHoneyfileService
 	AIService        *MockAIAgentService
@@ -76,7 +76,7 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		TokenService: new(MockTokenService),
 
 		// File Service Mocks
-		StorageManager:   new(MockStorageManager),
+		StorageService:   new(MockStorageService),
 		PolicyService:    new(MockEncryptionPolicyService),
 		HoneyfileService: new(MockHoneyfileService),
 		AIService:        new(MockAIAgentService),

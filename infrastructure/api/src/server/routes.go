@@ -208,7 +208,7 @@ func (s *Server) setupEncryptedStorageRoutes() {
 		logic.CSRFMiddleware(s.redis, s.logger),
 	)
 	{
-		encV1.GET("/status", files.EncryptedStorageStatusHandler(s.encryptedStorageService))
+		encV1.GET("/status", files.EncryptedStorageStatusHandler(s.encryptedStorageService, s.encryptionService))
 		encV1.GET("/files", files.EncryptedStorageListHandler(s.encryptedStorageService, s.logger))
 		encV1.POST("/upload", files.EncryptedStorageUploadHandler(s.encryptedStorageService, s.secureAIFeeder, s.logger))
 		encV1.GET("/download", files.EncryptedStorageDownloadHandler(s.encryptedStorageService, s.logger))

@@ -1,141 +1,145 @@
 package testutils
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
+	authhandlers "github.com/nas-ai/api/src/handlers/auth"
+	filehandlers "github.com/nas-ai/api/src/handlers/files"
+	"github.com/nas-ai/api/src/middleware/logic"
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
+	"github.com/nas-ai/api/src/services/content"
+	"github.com/nas-ai/api/src/services/intelligence"
+	"github.com/nas-ai/api/src/services/security"
 )
 
-// NewTestRouter creates a Gin router wired with mocks from TestEnv.
-// This function handles DI and route registration, keeping tests focused on behavior.
-func NewTestRouter(env *TestEnv) *gin.Engine {
+// SetupTestRouter wraps the REAL handlers using injected interfaces.
+// This allows testing the real handlers with either:
+// 1. Real Services (via TestEnv) - For Integration Tests
+// 2. Mock Services (via mocks) - For Unit Tests
+//
+// Arguments are now Interfaces (from src/services/security and src/repository/auth)
+func SetupTestRouter(
+	env *TestEnv,
+	userRepo auth_repo.UserRepositoryInterface,
+	jwtService security.JWTServiceInterface,
+	passwordService security.PasswordServiceInterface,
+	tokenService security.TokenServiceInterface,
+	storageService content.StorageService,
+	honeyService content.HoneyfileServiceInterface,
+	aiService intelligence.AIAgentServiceInterface,
+	policyService security.EncryptionPolicyServiceInterface,
+	encryptionService security.EncryptionServiceInterface,
+	encryptedStorageService content.EncryptedStorageServiceInterface,
+) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
-	// Auth Routes
+	// Request ID middleware (required by handlers)
+	router.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-request-id")
+		c.Next()
+	})
+
+	// Real Email Service (real config) - kept as struct for now
+	realEmailService := MakeTestEmailService(env)
+
+	// Auth Group
 	authGroup := router.Group("/auth")
 	{
-		// Login handler (mocked)
-		authGroup.POST("/login", func(c *gin.Context) {
-			var req struct {
-				Email    string `json:"email" binding:"required,email"`
-				Password string `json:"password" binding:"required"`
-			}
+		// Inject dependencies into REAL Handlers
+		authGroup.POST("/register", authhandlers.RegisterHandler(
+			env.Config,
+			userRepo,
+			jwtService,
+			passwordService,
+			tokenService,
+			realEmailService, // struct
+			env.RedisClient,  // struct
+			env.Logger,
+		))
 
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
-				return
-			}
+		// Logout handler (wrapper)
 
-			// Call mocked UserRepo.FindByEmail
-			user, err := env.UserRepo.FindByEmail(c.Request.Context(), req.Email)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "internal_error"}})
-				return
-			}
-			if user == nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "invalid_credentials", "message": "Invalid email or password"}})
-				return
-			}
+		authGroup.POST("/login", authhandlers.LoginHandler(
+			userRepo,
+			jwtService,
+			passwordService,
+			env.RedisClient,
+			env.Logger,
+		))
 
-			// Call mocked PasswordService.ComparePassword
-			if err := env.PasswordSvc.ComparePassword(user.PasswordHash, req.Password); err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "invalid_credentials", "message": "Invalid email or password"}})
-				return
-			}
+		authGroup.POST("/refresh", authhandlers.RefreshHandler(
+			jwtService,
+			env.RedisClient,
+			env.Logger,
+		))
 
-			// Call mocked JWTService.GenerateAccessToken
-			accessToken, err := env.JWTService.GenerateAccessToken(user.ID, user.Email)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
-				return
-			}
+		authGroup.POST("/logout", authhandlers.LogoutHandler(
+			jwtService,
+			env.RedisClient,
+			env.Logger,
+		))
+	}
 
-			refreshToken, err := env.JWTService.GenerateRefreshToken(user.ID, user.Email)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{
-				"user":          user.ToResponse(),
-				"access_token":  accessToken,
-				"refresh_token": refreshToken,
-				"csrf_token":    "mock-csrf-token",
+	// Helper for valid protected route testing
+	// We use the REAL AuthMiddleware here for testing it.
+	// Since we are creating a "TestRouter" that mimics production but with specific injected services.
+	// Note: AuthMiddleware also takes interfaces now.
+	protectedGroup := router.Group("/api/v1")
+	protectedGroup.Use(logic.AuthMiddleware(jwtService, tokenService, env.RedisClient, env.Logger))
+	{
+		// Sample protected route for testing middleware
+		protectedGroup.GET("/me", func(c *gin.Context) {
+			userID, _ := c.Get("user_id")
+			userEmail, _ := c.Get("user_email")
+			c.JSON(200, gin.H{
+				"message":    "protected_resource",
+				"user_id":    userID,
+				"user_email": userEmail,
 			})
 		})
 
-		// Register handler (mocked)
-		authGroup.POST("/register", func(c *gin.Context) {
-			var req struct {
-				Username   string `json:"username" binding:"required"`
-				Email      string `json:"email" binding:"required,email"`
-				Password   string `json:"password" binding:"required"`
-				InviteCode string `json:"invite_code"`
+		// File Routes
+		// Only register if services are provided (allows partial setup)
+		if storageService != nil {
+			storageGroup := protectedGroup.Group("/storage")
+			{
+				storageGroup.POST("/upload", filehandlers.StorageUploadHandler(storageService, policyService, honeyService, aiService, env.Logger))
+				storageGroup.GET("/list", filehandlers.StorageListHandler(storageService, env.Logger))
+				// Add others if needed
 			}
 
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
-				return
+			filesGroup := protectedGroup.Group("/files")
+			{
+				filesGroup.GET("/content", filehandlers.StorageDownloadHandler(storageService, honeyService, env.Logger))
 			}
+		}
 
-			// Invite code check
-			if env.Config.InviteCode != "" && req.InviteCode != env.Config.InviteCode {
-				c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"code": "invalid_invite_code"}})
-				return
+		// Encrypted Storage Routes
+		if encryptedStorageService != nil {
+			encV1 := protectedGroup.Group("/encrypted")
+			{
+				encV1.GET("/status", filehandlers.EncryptedStorageStatusHandler(encryptedStorageService, encryptionService))
+				encV1.GET("/files", filehandlers.EncryptedStorageListHandler(encryptedStorageService, env.Logger))
+				encV1.POST("/upload", filehandlers.EncryptedStorageUploadHandler(encryptedStorageService, nil, env.Logger)) // nil aiFeeder
+				encV1.GET("/download", filehandlers.EncryptedStorageDownloadHandler(encryptedStorageService, env.Logger))
+				encV1.GET("/preview", filehandlers.EncryptedStoragePreviewHandler(encryptedStorageService, env.Logger))
+				encV1.DELETE("/delete", filehandlers.EncryptedStorageDeleteHandler(encryptedStorageService, env.Logger))
 			}
-
-			// Check username
-			if len(req.Username) < 3 {
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_username", "message": "Username must be at least 3 characters"}})
-				return
-			}
-
-			existingByUsername, _ := env.UserRepo.FindByUsername(c.Request.Context(), req.Username)
-			if existingByUsername != nil {
-				c.JSON(http.StatusConflict, gin.H{"error": gin.H{"code": "username_exists"}})
-				return
-			}
-
-			// Validate password strength
-			if err := env.PasswordSvc.ValidatePasswordStrength(req.Password); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "weak_password", "message": err.Error()}})
-				return
-			}
-
-			// Check email
-			existingByEmail, _ := env.UserRepo.FindByEmail(c.Request.Context(), req.Email)
-			if existingByEmail != nil {
-				c.JSON(http.StatusConflict, gin.H{"error": gin.H{"code": "email_exists"}})
-				return
-			}
-
-			// Hash password
-			passwordHash, err := env.PasswordSvc.HashPassword(req.Password)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
-				return
-			}
-
-			// Create user
-			user, err := env.UserRepo.CreateUser(c.Request.Context(), req.Username, req.Email, passwordHash)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
-				return
-			}
-
-			// Generate tokens
-			accessToken, _ := env.JWTService.GenerateAccessToken(user.ID, user.Email)
-			refreshToken, _ := env.JWTService.GenerateRefreshToken(user.ID, user.Email)
-
-			c.JSON(http.StatusCreated, gin.H{
-				"user":          user.ToResponse(),
-				"access_token":  accessToken,
-				"refresh_token": refreshToken,
-				"csrf_token":    "mock-csrf-token",
-			})
-		})
+		}
 	}
 
 	return router
+}
+
+// NewTestRouter is the helper for Integration Tests (backward compatibility / convenience)
+// It injects the REAL services from TestUtils
+func NewTestRouter(env *TestEnv) *gin.Engine {
+	// Real Repos & Services
+	userRepo := MakeRealUserRepository(env)
+	jwtService, _ := security.NewJWTService(env.Config, env.Logger)
+	passwordService := security.NewPasswordService()
+	tokenService := security.NewTokenService(env.RedisClient, env.Logger)
+
+	// Pass them to SetupTestRouter (with nil for file services to maintain back-compat)
+	return SetupTestRouter(env, userRepo, jwtService, passwordService, tokenService, nil, nil, nil, nil, nil, nil)
 }
