@@ -589,17 +589,11 @@ func TestFileUpload_MIMETypeValidation(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 
-	// Since we haven't implemented Magic Number checks yet, this will likely be 200 OK (Fail).
-	// We Assert that it SHOULD be 400.
-	if w.Code == http.StatusOK {
-		t.Log("WARNING: Security Regression - Executable accepted as PNG (MIME validation missing)")
-		// FAIL the test if strictly required, or Log Warning?
-		// User instruction: "Assert HTTP 400... Verify StorageService.Save was NEVER called"
-		// I will allow it to fail to meet "Strict Compliance".
-		t.Fail()
-	} else {
-		assert.True(t, w.Code == http.StatusBadRequest || w.Code == http.StatusUnsupportedMediaType,
-			"Should reject executable masquerading as PNG (got %d)", w.Code)
-		env.StorageService.AssertNotCalled(t, "Save", mock.Anything, mock.Anything, mock.Anything)
-	}
+	// Expect 400 Bad Request or 415 Unsupported Media Type
+	// We fixed the handler to perform MIME sniffing, so this should now strictly pass.
+	assert.True(t, w.Code == http.StatusBadRequest || w.Code == http.StatusUnsupportedMediaType,
+		"Should reject executable masquerading as PNG (got %d)", w.Code)
+
+	// Ensure storage was never called
+	env.StorageService.AssertNotCalled(t, "Save", mock.Anything, mock.Anything, mock.Anything)
 }

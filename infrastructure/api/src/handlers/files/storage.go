@@ -133,6 +133,43 @@ func StorageUploadHandler(storage content.StorageService, policyService security
 		}
 		defer src.Close()
 
+		// Security: MIME Type Validation
+		buff := make([]byte, 512)
+		n, err := src.Read(buff)
+		if err != nil && err != io.EOF {
+			logger.WithError(err).Error("Failed to read file header for MIME detection")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to scan file"})
+			return
+		}
+
+		// If file is empty or too small, we might want to reject it or let it pass with warning
+		if n == 0 {
+			// Let 0-byte files pass for now, or reject?
+			// Test expects "graceful" handling.
+			// DetectedType will be "application/octet-stream" for empty buffer usually.
+		}
+
+		detectedType := http.DetectContentType(buff[:n])
+
+		// Reset file pointer
+		if _, err := src.Seek(0, 0); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset file"})
+			return
+		}
+
+		// Strictly forbid executable content disguised as safe types
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		isImage := ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp"
+
+		if isImage && !strings.HasPrefix(detectedType, "image/") {
+			logger.WithFields(logrus.Fields{
+				"filename":      fileHeader.Filename,
+				"detected_type": detectedType,
+			}).Warn("Security Alert: File disguised as image")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file content"})
+			return
+		}
+
 		// ==== SAVE FILE (with or without encryption) ====
 		var result *content.SaveResult
 
