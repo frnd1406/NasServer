@@ -23,6 +23,7 @@ import (
 	"github.com/nas-ai/api/src/database"
 	"github.com/nas-ai/api/src/drivers/storage"
 	"github.com/nas-ai/api/src/handlers/files"
+	"github.com/nas-ai/api/src/handlers/system"
 	"github.com/nas-ai/api/src/middleware/core"
 	"github.com/nas-ai/api/src/middleware/logic"
 
@@ -77,9 +78,11 @@ type Server struct {
 	alertService            *operations.AlertService
 	benchmarkService        *operations.BenchmarkService
 	consistencyService      *operations.ConsistencyService
+	diagnosticsService      *operations.DiagnosticsService
 
 	// Handlers
 	blobStorageHandler *files.BlobStorageHandler
+	diagnosticsHandler *system.DiagnosticsHandler
 }
 
 // NewServer creates and initializes all server dependencies
@@ -265,6 +268,10 @@ func (s *Server) initServices() error {
 		s.logger,
 	)
 
+	// Diagnostics Service
+	s.diagnosticsService = operations.NewDiagnosticsService(s.storageService, s.encryptionService, s.dbx)
+	s.logger.Info("DiagnosticsService initialized")
+
 	// Initial reconciliation
 	s.logger.Info("Running initial consistency reconciliation...")
 	if err := s.consistencyService.RunReconciliation(context.Background()); err != nil {
@@ -278,6 +285,9 @@ func (s *Server) initServices() error {
 func (s *Server) initHandlers() {
 	s.blobStorageHandler = files.NewBlobStorageHandler(s.storageService, s.logger)
 	s.logger.Info("BlobStorageHandler initialized")
+
+	s.diagnosticsHandler = system.NewDiagnosticsHandler(s.diagnosticsService)
+	s.logger.Info("DiagnosticsHandler initialized")
 }
 
 // initRouter creates and configures the Gin router

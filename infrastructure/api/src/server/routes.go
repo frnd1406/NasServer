@@ -129,6 +129,13 @@ func (s *Server) setupV1Routes() {
 		// Setup endpoints
 		v1.GET("/system/setup-status", settings.SetupStatusHandler(s.logger))
 
+		// Diagnostics (Admin Only)
+		v1.GET("/system/diagnostics",
+			logic.AuthMiddleware(s.jwtService, s.tokenService, s.redis, s.logger),
+			logic.AdminOnly(s.userRepo, s.logger),
+			s.diagnosticsHandler.RunSelfTest,
+		)
+
 		// Vault endpoints (public)
 		v1.GET("/vault/status", files.VaultStatusHandler(s.encryptionService))
 		v1.GET("/vault/config", files.VaultConfigGetHandler(s.encryptionService))
