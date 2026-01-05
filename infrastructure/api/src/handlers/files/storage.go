@@ -83,6 +83,14 @@ func StorageUploadHandler(storage content.StorageService, policyService security
 	return func(c *gin.Context) {
 		requestID := c.GetString("request_id")
 		path := c.PostForm("path")
+		if path == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "path is required"})
+			return
+		}
+		if strings.Contains(path, "\x00") || strings.Contains(path, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid path"})
+			return
+		}
 
 		// ==== PHASE 3B: Hybrid Encryption with Policy Support ====
 		// Read encryption override from form (AUTO, FORCE_USER, FORCE_NONE)
