@@ -20,7 +20,7 @@ Das NAS.AI System verwendet **Zero-Knowledge Encryption** für maximale Sicherhe
                │
                ▼
 ┌─────────────────────────────────────┐
-│  Dateien verschlüsselt (AES-256-GCM)│
+│  Dateien verschlüsselt (XChaCha20-Poly1305)│
 │  Auf Disk gespeichert              │
 └─────────────────────────────────────┘
 ```
@@ -131,11 +131,13 @@ docker-compose up -d
 ## 🔐 Encryption Details
 
 **Algorithm Stack:**
-- **Encryption:** AES-256-GCM (Authenticated Encryption)
+- **Encryption:** XChaCha20-Poly1305 (Extended Nonce AEAD)
 - **Key Derivation:** Argon2id (Memory-Hard, GPU-resistent)
 - **Salt:** 32 Bytes random (pro Vault)
-- **Nonce:** 12 Bytes random (pro Datei)
+- **Nonce:** 24 Bytes random (pro Datei)
 - **Auth Tag:** 16 Bytes (Integritätsschutz)
+
+> Selected for high performance on non-hardware-accelerated CPUs and extended nonce support (24-byte) to eliminate nonce-reuse risks.
 
 **Sicherheitsparameter:**
 ```go

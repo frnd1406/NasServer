@@ -457,7 +457,8 @@ func EncryptStream(password string, input io.Reader, output io.Writer) error {
 
 		// Encrypt the chunk (AEAD includes authentication tag)
 		// Reuse ciphertextBuf to avoid allocation
-		ciphertextBuf = aead.Seal(ciphertextBuf[:0], chunkNonce, plaintext[:n], nil)
+		// SECURITY: Pass header as Additional Authenticated Data (AAD) to bind metadata to ciphertext
+		ciphertextBuf = aead.Seal(ciphertextBuf[:0], chunkNonce, plaintext[:n], header)
 
 		if _, err := output.Write(ciphertextBuf); err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunkIndex, err)
@@ -543,7 +544,8 @@ func DecryptStream(password string, input io.Reader, output io.Writer) error {
 
 		// Decrypt and authenticate the chunk
 		// Reuse plaintextBuf to avoid allocation
-		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
+		// SECURITY: Validate header integrity using AAD
+		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], header)
 		if err != nil {
 			// SECURITY: Return constant error to prevent timing leaks
 			return ErrCorruptedData
@@ -686,7 +688,8 @@ func DecryptStreamWithSeek(password string, input io.ReadSeeker, output io.Write
 		DeriveChunkNonceInPlace(baseNonce, chunkIndex, chunkNonce)
 
 		// Decrypt and authenticate the chunk
-		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
+		// SECURITY: Validate header integrity using AAD
+		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], header)
 		if err != nil {
 			// SECURITY: Return constant error to prevent timing leaks
 			return bytesWritten, ErrCorruptedData
@@ -984,7 +987,8 @@ func (sc *StreamCipher) EncryptStream(input io.Reader, output io.Writer) error {
 		}
 
 		DeriveChunkNonceInPlace(baseNonce, chunkIndex, chunkNonce)
-		ciphertextBuf = aead.Seal(ciphertextBuf[:0], chunkNonce, plaintext[:n], nil)
+		// SECURITY: Pass header as AAD
+		ciphertextBuf = aead.Seal(ciphertextBuf[:0], chunkNonce, plaintext[:n], header)
 
 		if _, err := output.Write(ciphertextBuf); err != nil {
 			return fmt.Errorf("failed to write chunk %d: %w", chunkIndex, err)
@@ -1058,7 +1062,8 @@ func (sc *StreamCipher) DecryptStream(input io.Reader, output io.Writer) error {
 		}
 
 		DeriveChunkNonceInPlace(baseNonce, chunkIndex, chunkNonce)
-		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], nil)
+		// SECURITY: Validate header integrity using AAD
+		plaintextBuf, err = aead.Open(plaintextBuf[:0], chunkNonce, ciphertext[:n], header)
 		if err != nil {
 			// SECURITY: Return constant error to prevent timing leaks
 			return ErrCorruptedData
@@ -1262,8 +1267,18 @@ func DecryptChunk(password string, input io.ReaderAt, chunkIndex uint64, salt, b
 	// Derive chunk-specific nonce
 	chunkNonce := deriveChunkNonce(baseNonce, chunkIndex)
 
+	// Reconstruct header for AAD verification
+	// Header: Magic(4) + Version(1) + Salt(16) + BaseNonce(24)
+	// Note: We use the constants for Magic and Version as we only support V2
+	header := make([]byte, 0, HeaderSize)
+	header = append(header, []byte(MagicBytes)...)
+	header = append(header, Version)
+	header = append(header, salt...)
+	header = append(header, baseNonce...)
+
 	// Decrypt and authenticate the chunk
-	plaintext, err := aead.Open(nil, chunkNonce, ciphertext[:n], nil)
+	// SECURITY: Validate header integrity using AAD
+	plaintext, err := aead.Open(nil, chunkNonce, ciphertext[:n], header)
 	if err != nil {
 		// SECURITY: Return constant error to prevent timing leaks
 		return nil, ErrCorruptedData
