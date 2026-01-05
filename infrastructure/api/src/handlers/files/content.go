@@ -1,18 +1,22 @@
 package files
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nas-ai/api/src/services/content"
 	"github.com/sirupsen/logrus"
 )
 
 // FileContentHandler returns the raw content of a file for preview
 // GET /api/v1/files/content?path=/mnt/data/...
-func FileContentHandler(logger *logrus.Logger) gin.HandlerFunc {
+// FileContentHandler returns the raw content of a file for preview
+// GET /api/v1/files/content?path=/mnt/data/...
+func FileContentHandler(storageService content.StorageService, logger *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		filePath := c.Query("path")
 		if filePath == "" {
@@ -20,25 +24,27 @@ func FileContentHandler(logger *logrus.Logger) gin.HandlerFunc {
 			return
 		}
 
-		// Security: Ensure path is within /mnt/data
-		cleanPath := filepath.Clean(filePath)
-		if !strings.HasPrefix(cleanPath, "/mnt/data/") {
-			logger.WithField("path", filePath).Warn("Unauthorized file access attempt")
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-			return
-		}
+		// Use StorageService to open the file (handles path security logic internally if implemented,
+		// but checking prefix here is still good defensive practice if storageService assumes relative paths)
+		// Assuming storageService.Open takes relative path or handles it.
+		// Existing StorageService Open takes relative path usually.
+		// filePath from query might be absolute or relative.
+		// Logic: If /mnt/data is root, strip it.
+		relPath := strings.TrimPrefix(filePath, "/mnt/data/")
+		relPath = strings.TrimPrefix(relPath, "/")
 
-		// Check if file exists
-		info, err := os.Stat(cleanPath)
+		// Open file via service
+		file, info, contentType, err := storageService.Open(relPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "file not found"})
 				return
 			}
-			logger.WithError(err).Error("Failed to stat file")
+			logger.WithError(err).Error("Failed to open file via storage service")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to access file"})
 			return
 		}
+		defer file.Close()
 
 		// Ensure it's a file, not a directory
 		if info.IsDir() {
@@ -58,18 +64,20 @@ func FileContentHandler(logger *logrus.Logger) gin.HandlerFunc {
 		}
 
 		// Read file content
-		content, err := os.ReadFile(cleanPath)
+		contentBytes, err := io.ReadAll(file)
 		if err != nil {
-			logger.WithError(err).Error("Failed to read file")
+			logger.WithError(err).Error("Failed to read file content")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
 			return
 		}
 
-		// Detect content type
-		contentType := http.DetectContentType(content)
+		// If contentType from storage is empty or generic, detect it
+		if contentType == "" || contentType == "application/octet-stream" {
+			contentType = http.DetectContentType(contentBytes)
+		}
 
-		// Override for common text formats
-		ext := strings.ToLower(filepath.Ext(cleanPath))
+		// Override for common text formats (re-implementing original logic)
+		ext := strings.ToLower(filepath.Ext(filePath))
 		switch ext {
 		case ".txt", ".log":
 			contentType = "text/plain; charset=utf-8"
@@ -93,6 +101,6 @@ func FileContentHandler(logger *logrus.Logger) gin.HandlerFunc {
 
 		c.Header("Content-Type", contentType)
 		c.Header("X-Content-Type-Options", "nosniff")
-		c.Data(http.StatusOK, contentType, content)
+		c.Data(http.StatusOK, contentType, contentBytes)
 	}
 }

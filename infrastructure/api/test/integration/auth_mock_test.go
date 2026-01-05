@@ -7,68 +7,49 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nas-ai/api/src/domain/auth"
-	"github.com/nas-ai/api/src/services/security"
 	"github.com/nas-ai/api/test/testutils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
 
-// TestLogin_Success_WithMocks demonstrates how to use the DI router with Mocks
-// directly, verifying that Real Handlers interact with services correctly.
-func TestLogin_Success_WithMocks(t *testing.T) {
-	// 1. Setup Mocks
-	mockUserRepo := new(testutils.MockUserRepository)
-	mockJWTService := new(testutils.MockJWTService)
-	mockPasswordService := new(testutils.MockPasswordService)
-	// We don't need TokenService for Login, but SetupTestRouter requires it
-	mockTokenService := new(testutils.MockTokenService)
+// TestLogin_Success tests login with REAL security services (JWT, Password).
+// This is a true integration test - no mocks for auth logic.
+func TestLogin_Success_WithRealServices(t *testing.T) {
+	// 1. Setup TestEnv with REAL security services
+	env := testutils.NewTestEnv(t)
 
-	// 2. Setup Expectations
-	// User found
-	mockUser := &auth.User{
-		ID:           "user-1",
-		Email:        "test@example.com",
-		PasswordHash: "hashed_password",
+	// 2. First, register a user (so we have someone to login as)
+	router := testutils.SetupTestRouter(env)
+
+	// Register user
+	registerPayload := map[string]string{
+		"username":    "testuser",
+		"email":       "test@example.com",
+		"password":    "SecurePassword123!",
+		"invite_code": env.Config.InviteCode,
 	}
-	mockUserRepo.On("FindByEmail", mock.Anything, "test@example.com").Return(mockUser, nil)
-
-	// Password valid
-	mockPasswordService.On("ComparePassword", "hashed_password", "password123").Return(nil)
-
-	// Tokens generated
-	mockJWTService.On("GenerateAccessToken", "user-1", "test@example.com").Return("mock_access_token", nil)
-	mockJWTService.On("GenerateRefreshToken", "user-1", "test@example.com").Return("mock_refresh_token", nil)
-
-	// Note: LoginHandler (Real) also uses Redis for CSRF token generation (logic.GeneratCSRFToken).
-	// Currently SetupTestRouter uses env.RedisClient (Real or Miniredis).
-	// We can pass a "Real" Miniredis env for the Redis part while mocking services.
-	env := testutils.NewTestEnv(t) // This provides Miniredis
-
-	// 3. Initialize Router with Mocks
-	router := testutils.SetupTestRouter(
-		env, // Provides Redis + Config + Logger
-		mockUserRepo,
-		mockJWTService,
-		mockPasswordService,
-		mockTokenService,
-		nil, nil, nil, nil, // File services
-		nil, nil, // Encryption services
-	)
-
-	// 4. Execute Request
-	loginPayload := map[string]string{
-		"email":    "test@example.com",
-		"password": "password123",
-	}
-	jsonData, _ := json.Marshal(loginPayload)
-	req, _ := http.NewRequest("POST", "/auth/login", bytes.NewBuffer(jsonData))
+	jsonData, _ := json.Marshal(registerPayload)
+	req, _ := http.NewRequest("POST", "/auth/register", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Registration should succeed (status might be OK or Created)
+	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusCreated,
+		"Registration should succeed, got: %d, body: %s", w.Code, w.Body.String())
+
+	// 3. Now login with the registered user
+	loginPayload := map[string]string{
+		"email":    "test@example.com",
+		"password": "SecurePassword123!",
+	}
+	jsonData, _ = json.Marshal(loginPayload)
+	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
 
-	// 5. Assertions
+	// 4. Assertions
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
@@ -78,10 +59,9 @@ func TestLogin_Success_WithMocks(t *testing.T) {
 	// Check user in response
 	userData, ok := response["user"].(map[string]interface{})
 	assert.True(t, ok, "User field should be present")
-	assert.Equal(t, "user-1", userData["id"])
 	assert.Equal(t, "test@example.com", userData["email"])
 
-	// Check Cookies for tokens (since handlers set HttpOnly cookies)
+	// Check Cookies for tokens
 	cookies := w.Result().Cookies()
 	var accessTokenCookie *http.Cookie
 	for _, c := range cookies {
@@ -91,52 +71,95 @@ func TestLogin_Success_WithMocks(t *testing.T) {
 		}
 	}
 	assert.NotNil(t, accessTokenCookie, "Access token cookie should be set")
-	assert.Equal(t, "mock_access_token", accessTokenCookie.Value)
-
-	// Verify Mocks
-	mockUserRepo.AssertExpectations(t)
-	mockPasswordService.AssertExpectations(t)
-	mockJWTService.AssertExpectations(t)
+	assert.NotEmpty(t, accessTokenCookie.Value, "Access token should not be empty")
 }
 
-func TestLogin_Failure_WithMocks(t *testing.T) {
-	mockUserRepo := new(testutils.MockUserRepository)
-	mockJWTService := new(testutils.MockJWTService)
-	mockPasswordService := new(testutils.MockPasswordService)
-	mockTokenService := new(testutils.MockTokenService)
+// TestLogin_Failure_WrongPassword tests login failure with wrong password
+func TestLogin_Failure_WrongPassword(t *testing.T) {
 	env := testutils.NewTestEnv(t)
+	router := testutils.SetupTestRouter(env)
 
-	// Expectation: User found, but password invalid
-	mockUser := &auth.User{
-		ID:           "user-1",
-		Email:        "test@example.com",
-		PasswordHash: "hashed_password",
+	// First register a user
+	registerPayload := map[string]string{
+		"username":    "wrongpwuser",
+		"email":       "wrongpw@example.com",
+		"password":    "CorrectPassword123!",
+		"invite_code": env.Config.InviteCode,
 	}
-	mockUserRepo.On("FindByEmail", mock.Anything, "test@example.com").Return(mockUser, nil)
+	jsonData, _ := json.Marshal(registerPayload)
+	req, _ := http.NewRequest("POST", "/auth/register", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
 
-	// Password INVALID
-	mockPasswordService.On("ComparePassword", "hashed_password", "wrong_password").Return(security.ErrInvalidPassword) // Assuming security package has this error or just generic error
+	// Now try to login with wrong password
+	loginPayload := map[string]string{
+		"email":    "wrongpw@example.com",
+		"password": "WrongPassword456!",
+	}
+	jsonData, _ = json.Marshal(loginPayload)
+	req, _ = http.NewRequest("POST", "/auth/login", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
 
-	router := testutils.SetupTestRouter(
-		env,
-		mockUserRepo,
-		mockJWTService,
-		mockPasswordService,
-		mockTokenService,
-		nil, nil, nil, nil, // File services
-		nil, nil, // Encryption services
-	)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestLogin_Failure_UserNotFound tests login with non-existent user
+func TestLogin_Failure_UserNotFound(t *testing.T) {
+	env := testutils.NewTestEnv(t)
+	router := testutils.SetupTestRouter(env)
 
 	loginPayload := map[string]string{
-		"email":    "test@example.com",
-		"password": "wrong_password",
+		"email":    "nonexistent@example.com",
+		"password": "AnyPassword123!",
 	}
 	jsonData, _ := json.Marshal(loginPayload)
 	req, _ := http.NewRequest("POST", "/auth/login", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	mockPasswordService.AssertExpectations(t)
+}
+
+// TestProtectedEndpoint_WithRealToken tests accessing protected endpoint with real JWT
+func TestProtectedEndpoint_WithRealToken(t *testing.T) {
+	env := testutils.NewTestEnv(t)
+	router := testutils.SetupTestRouter(env)
+
+	// Generate a real JWT token
+	token, err := env.GenerateTestToken("user-123", "realuser@example.com")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	// Access protected endpoint
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &response)
+	assert.Equal(t, "user-123", response["user_id"])
+	assert.Equal(t, "realuser@example.com", response["user_email"])
+}
+
+// TestProtectedEndpoint_NoToken tests accessing protected endpoint without token
+func TestProtectedEndpoint_NoToken(t *testing.T) {
+	env := testutils.NewTestEnv(t)
+	router := testutils.SetupTestRouter(env)
+
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

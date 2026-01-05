@@ -18,13 +18,10 @@ import (
 func TestRealAuthMiddleware_ValidToken(t *testing.T) {
 	// Setup with real services backed by miniredis
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewTestRouter(env)
+	router := testutils.SetupTestRouter(env)
 
-	// Generate a real JWT token using the real JWTService
-	jwtService, err := testutils.NewRealJWTService(env)
-	require.NoError(t, err)
-
-	token, err := jwtService.GenerateAccessToken("user-123", "test@example.com")
+	// Generate a real JWT token using env's JWTService
+	token, err := env.GenerateTestToken("user-123", "test@example.com")
 	require.NoError(t, err)
 
 	// Test protected endpoint with valid token
@@ -41,7 +38,7 @@ func TestRealAuthMiddleware_ValidToken(t *testing.T) {
 
 func TestRealAuthMiddleware_NoToken(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewTestRouter(env)
+	router := testutils.SetupTestRouter(env)
 
 	// Test protected endpoint without token
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -55,7 +52,7 @@ func TestRealAuthMiddleware_NoToken(t *testing.T) {
 
 func TestRealAuthMiddleware_InvalidToken(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewTestRouter(env)
+	router := testutils.SetupTestRouter(env)
 
 	// Test with invalid token
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -70,13 +67,10 @@ func TestRealAuthMiddleware_InvalidToken(t *testing.T) {
 
 func TestRealAuthMiddleware_CookieAuth(t *testing.T) {
 	env := testutils.NewTestEnv(t)
-	router := testutils.NewTestRouter(env)
+	router := testutils.SetupTestRouter(env)
 
-	// Generate real token
-	jwtService, err := testutils.NewRealJWTService(env)
-	require.NoError(t, err)
-
-	token, err := jwtService.GenerateAccessToken("cookie-user", "cookie@example.com")
+	// Generate real token using env's JWTService
+	token, err := env.GenerateTestToken("cookie-user", "cookie@example.com")
 	require.NoError(t, err)
 
 	// Test with cookie instead of header

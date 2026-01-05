@@ -1,44 +1,52 @@
 package testutils
 
 import (
+	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
+	files_repo "github.com/nas-ai/api/src/repository/files"
+	"github.com/nas-ai/api/src/services/content"
 	"github.com/nas-ai/api/src/services/security"
+	"github.com/nas-ai/api/test/testutils/mocks"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
 // TestEnv holds all dependencies needed for integration tests.
-// It separates mock initialization from router wiring (SRP).
+// Real security services + Mock data services (SRP-compliant).
 type TestEnv struct {
-	// Auth Mocks
-	UserRepo     *MockUserRepository
-	JWTService   *MockJWTService
-	PasswordSvc  *MockPasswordService
-	TokenService *MockTokenService
+	// REAL Security Services
+	JWTService      security.JWTServiceInterface
+	TokenService    security.TokenServiceInterface
+	PasswordService security.PasswordServiceInterface
+	EncryptionSvc   security.EncryptionServiceInterface
+	PolicyService   security.EncryptionPolicyServiceInterface
+	HoneyfileSvc    content.HoneyfileServiceInterface
+	HoneyfileRepo   files_repo.HoneyfileRepositoryInterface
 
-	// File Service Mocks
-	StorageService   *MockStorageService
-	PolicyService    *MockEncryptionPolicyService
-	HoneyfileService *MockHoneyfileService
-	AIService        *MockAIAgentService
+	// MOCK Data Services (only file I/O and AI)
+	StorageService *mocks.MockStorageService
+	AIService      *mocks.MockAIAgentService
 
-	// Real Services (with fake backends)
-	DB          *database.DB // Test database (in-memory SQLite)
+	// Infrastructure (real with fake backends)
+	DB          *database.DBX
 	RedisClient *database.RedisClient
 	Config      *config.Config
 	Logger      *logrus.Logger
+	SlogLogger  *slog.Logger
 
 	// Internal: for cleanup
 	miniredis *miniredis.Miniredis
+	tempDir   string
 }
 
-// NewTestEnv creates a fully initialized TestEnv.
-// Call t.Cleanup() is handled automatically.
+// NewTestEnv creates a fully initialized TestEnv with REAL security services.
 func NewTestEnv(t *testing.T) *TestEnv {
 	// Setup miniredis
 	mr, err := miniredis.Run()
@@ -49,9 +57,11 @@ func NewTestEnv(t *testing.T) *TestEnv {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	redisClient := &database.RedisClient{Client: rdb}
 
-	// Logger (silent for tests)
+	// Logger (logrus for handlers, slog for database)
 	logger := logrus.New()
 	logger.SetLevel(logrus.ErrorLevel)
+
+	slogLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
 	// Config with test defaults
 	cfg := &config.Config{
@@ -62,44 +72,75 @@ func NewTestEnv(t *testing.T) *TestEnv {
 		InviteCode:   "TEST_INVITE",
 	}
 
-	// Create in-memory SQLite database for testing
-	// This allows us to test real SQL queries without needing a full Postgres instance
-	testDB, err := database.NewTestDatabase(logger)
+	// Create in-memory SQLite database for testing (using sqlx)
+	testDB, err := database.NewTestDatabase(slogLogger)
 	require.NoError(t, err)
 	t.Cleanup(func() { testDB.Close() })
 
+	// Temp directory for encryption vault
+	tempDir, err := os.MkdirTemp("", "test-vault-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(tempDir) })
+	vaultPath := filepath.Join(tempDir, "vault.enc")
+
+	// === REAL SECURITY SERVICES ===
+
+	// JWT Service
+	jwtSvc, err := security.NewJWTService(cfg, logger)
+	require.NoError(t, err)
+
+	// Token Service (revocation)
+	tokenSvc := security.NewTokenService(redisClient, logger)
+
+	// Password Service
+	passwordSvc := security.NewPasswordService()
+
+	// Encryption Service
+	encryptionSvc := security.NewEncryptionService(vaultPath, logger)
+
+	// Encryption Policy Service
+	policySvc := security.NewEncryptionPolicyService()
+
+	// Honeyfile Repository (uses test DB with sqlx)
+	honeyRepo := files_repo.NewHoneyfileRepository(testDB.DB, logger)
+
+	// Honeyfile Service
+	honeyfileSvc := content.NewHoneyfileService(honeyRepo, encryptionSvc, logger)
+
+	// === MOCK DATA SERVICES (only file I/O and AI) ===
+
 	return &TestEnv{
-		// Auth Mocks
-		UserRepo:     new(MockUserRepository),
-		JWTService:   new(MockJWTService),
-		PasswordSvc:  new(MockPasswordService),
-		TokenService: new(MockTokenService),
+		// Real Security
+		JWTService:      jwtSvc,
+		TokenService:    tokenSvc,
+		PasswordService: passwordSvc,
+		EncryptionSvc:   encryptionSvc,
+		PolicyService:   policySvc,
+		HoneyfileSvc:    honeyfileSvc,
+		HoneyfileRepo:   honeyRepo,
 
-		// File Service Mocks
-		StorageService:   new(MockStorageService),
-		PolicyService:    new(MockEncryptionPolicyService),
-		HoneyfileService: new(MockHoneyfileService),
-		AIService:        new(MockAIAgentService),
+		// Mock Data
+		StorageService: new(mocks.MockStorageService),
+		AIService:      new(mocks.MockAIAgentService),
 
-		// Real with fakes
+		// Infrastructure
 		DB:          testDB,
 		RedisClient: redisClient,
 		Config:      cfg,
 		Logger:      logger,
+		SlogLogger:  slogLogger,
 		miniredis:   mr,
+		tempDir:     tempDir,
 	}
 }
 
-// ResetMocks clears all mock expectations (useful for sub-tests).
-func (e *TestEnv) ResetMocks() {
-	e.UserRepo = new(MockUserRepository)
-	e.JWTService = new(MockJWTService)
-	e.PasswordSvc = new(MockPasswordService)
-	e.TokenService = new(MockTokenService)
+// GenerateTestToken creates a real JWT token for testing authenticated endpoints.
+func (e *TestEnv) GenerateTestToken(userID, email string) (string, error) {
+	return e.JWTService.GenerateAccessToken(userID, email)
 }
 
-// NewRealJWTService creates a real JWTService using TestEnv config.
-// Use this when you need actual JWT generation/validation in tests.
-func NewRealJWTService(env *TestEnv) (*security.JWTService, error) {
-	return security.NewJWTService(env.Config, env.Logger)
+// ResetMocks clears mock expectations (for sub-tests).
+func (e *TestEnv) ResetMocks() {
+	e.StorageService = new(mocks.MockStorageService)
+	e.AIService = new(mocks.MockAIAgentService)
 }

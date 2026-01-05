@@ -1,15 +1,15 @@
 package auth_repo
 
 import (
-		"github.com/nas-ai/api/src/domain/auth"
-"context"
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
 
+	"github.com/nas-ai/api/src/domain/auth"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/nas-ai/api/src/database"
-
 )
 
 // UserRepositoryX handles user data access using sqlx
@@ -72,6 +72,32 @@ func (r *UserRepositoryX) FindByEmail(ctx context.Context, email string) (*auth.
 		r.logger.Error("Failed to find user by email",
 			slog.String("error", err.Error()),
 			slog.String("email", email),
+		)
+		return nil, fmt.Errorf("failed to find user: %w", err)
+	}
+
+	return user, nil
+}
+
+// FindByUsername finds a user by username
+func (r *UserRepositoryX) FindByUsername(ctx context.Context, username string) (*auth.User, error) {
+	user := &auth.User{}
+
+	query := `
+		SELECT id, username, email, password_hash, role, email_verified, verified_at, created_at, updated_at
+		FROM users
+		WHERE username = $1
+	`
+
+	err := r.db.GetContext(ctx, user, query, username)
+	if err == sql.ErrNoRows {
+		return nil, nil // User not found (not an error)
+	}
+
+	if err != nil {
+		r.logger.Error("Failed to find user by username",
+			slog.String("error", err.Error()),
+			slog.String("username", username),
 		)
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}

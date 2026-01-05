@@ -98,7 +98,7 @@ func (s *Server) setupV1Routes() {
 		v1.POST("/query", ai.UnifiedQueryHandler(s.cfg.AIServiceURL, common.NewSecureHTTPClient(s.cfg.InternalAPISecret, 90*time.Second), s.jobService, s.logger))
 		v1.GET("/jobs/:id", system.GetJobStatusHandler(s.jobService, s.logger))
 		v1.GET("/ask", ai.AskHandler(s.db, s.cfg.AIServiceURL, s.cfg.OllamaURL, s.cfg.LLMModel, nil, s.logger))
-		v1.GET("/files/content", files.FileContentHandler(s.logger))
+		v1.GET("/files/content", files.FileContentHandler(s.storageService, s.logger))
 
 		// System capabilities
 		v1.GET("/system/capabilities", system.Capabilities(s.benchmarkService))
