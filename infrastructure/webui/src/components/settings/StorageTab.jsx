@@ -6,7 +6,11 @@ import {
     File,
     AlertTriangle,
     Loader2,
-    RefreshCw
+    RefreshCw,
+    Plus,
+    X,
+    Database,
+    Save
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { apiRequest } from "../../lib/api";
@@ -35,7 +39,7 @@ const SectionHeader = ({ icon: Icon, title, description }) => (
 );
 
 // Progress Bar for Disk Usage
-const DiskUsageBar = ({ used, total, label }) => {
+const DiskUsageBar = ({ used, total, label, mountPoint, fsType }) => {
     const percentage = total > 0 ? (used / total) * 100 : 0;
 
     // Color based on usage
@@ -61,21 +65,31 @@ const DiskUsageBar = ({ used, total, label }) => {
     };
 
     return (
-        <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-                <span className="text-slate-400">{label}</span>
-                <span className="text-white font-mono">
+        <div className="space-y-3 p-4 bg-slate-800/30 rounded-xl border border-white/5">
+            <div className="flex justify-between items-start">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{mountPoint}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
+                            {fsType}
+                        </span>
+                    </div>
+                </div>
+                <span className="text-white font-mono text-sm">
                     {formatSize(used)} / {formatSize(total)}
                 </span>
             </div>
+
             <div className={`h-4 rounded-full ${bgColor} overflow-hidden`}>
                 <div
                     className={`h-full ${barColor} transition-all duration-500 rounded-full`}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
                 />
             </div>
-            <div className="text-right text-xs text-slate-500">
-                {percentage.toFixed(1)}% verwendet
+
+            <div className="flex justify-between text-xs text-slate-500">
+                <span>{label || "Physical Disk"}</span>
+                <span>{percentage.toFixed(1)}% belegt</span>
             </div>
         </div>
     );
@@ -85,48 +99,49 @@ export default function StorageTab() {
     const toast = useToast();
     const [loading, setLoading] = useState(true);
     const [emptyingTrash, setEmptyingTrash] = useState(false);
-    const [storageData, setStorageData] = useState({
-        disk_total: 0,
-        disk_used: 0,
-        disk_free: 0,
-        file_count: 0,
-        folder_count: 0,
-        trash_size: 0,
-        trash_count: 0
+    const [savingPaths, setSavingPaths] = useState(false);
+
+    // Data States
+    const [disks, setDisks] = useState([]);
+    const [trashData, setTrashData] = useState({ size: 0, count: 0 });
+    const [settings, setSettings] = useState({
+        warningThreshold: 80,
+        criticalThreshold: 90,
+        autoCleanup: false,
+        cleanupAgeDays: 30,
+        aiIndexPaths: []
     });
 
+    // New Path Input
+    const [newPath, setNewPath] = useState("");
+
     useEffect(() => {
-        loadStorageData();
+        loadData();
     }, []);
 
-    const loadStorageData = async () => {
+    const loadData = async () => {
         setLoading(true);
         try {
-            // Get health data which includes disk stats
-            const healthData = await apiRequest("/health", { method: "GET" });
+            const [hwData, settingsData, trashRes] = await Promise.all([
+                apiRequest("/api/v1/system/hardware/storage", { method: "GET" }).catch(() => []),
+                apiRequest("/api/v1/storage/settings", { method: "GET" }),
+                apiRequest("/api/v1/storage/trash", { method: "GET" }).catch(() => ({ items: [] }))
+            ]);
 
-            // Get trash info
-            let trashData = { size: 0, count: 0 };
-            try {
-                const trashResponse = await apiRequest("/api/v1/storage/trash", { method: "GET" });
-                if (trashResponse?.items) {
-                    trashData.count = trashResponse.items.length;
-                    trashData.size = trashResponse.items.reduce((sum, item) => sum + (item.size || 0), 0);
-                }
-            } catch (e) {
-                console.log("Trash info not available");
-            }
-
-            setStorageData({
-                disk_total: healthData?.disk_total || 500 * 1024 * 1024 * 1024,  // Fallback 500GB
-                disk_used: healthData?.disk_used || 0,
-                disk_free: healthData?.disk_free || 0,
-                file_count: healthData?.file_count || 0,
-                folder_count: healthData?.folder_count || 0,
-                trash_size: trashData.size,
-                trash_count: trashData.count
+            setDisks(hwData || []);
+            setSettings({
+                ...settingsData,
+                aiIndexPaths: settingsData?.aiIndexPaths || []
             });
+
+            const trashItems = trashRes?.items || [];
+            setTrashData({
+                count: trashItems.length,
+                size: trashItems.reduce((sum, item) => sum + (item.size || 0), 0)
+            });
+
         } catch (err) {
+            console.error(err);
             toast.error("Speicherdaten konnten nicht geladen werden");
         } finally {
             setLoading(false);
@@ -142,11 +157,48 @@ export default function StorageTab() {
         try {
             await apiRequest("/api/v1/storage/trash/empty", { method: "POST" });
             toast.success("Papierkorb geleert");
-            setStorageData(prev => ({ ...prev, trash_size: 0, trash_count: 0 }));
+            setTrashData({ size: 0, count: 0 });
         } catch (err) {
             toast.error("Fehler beim Leeren des Papierkorbs");
         } finally {
             setEmptyingTrash(false);
+        }
+    };
+
+    const handleAddPath = () => {
+        if (!newPath.trim()) return;
+        if (settings.aiIndexPaths.includes(newPath.trim())) {
+            toast.error("Pfad existiert bereits");
+            return;
+        }
+
+        const updatedPaths = [...settings.aiIndexPaths, newPath.trim()];
+        savePaths(updatedPaths);
+        setNewPath("");
+    };
+
+    const handleRemovePath = (pathToRemove) => {
+        const updatedPaths = settings.aiIndexPaths.filter(p => p !== pathToRemove);
+        savePaths(updatedPaths);
+    };
+
+    const savePaths = async (paths) => {
+        setSavingPaths(true);
+        try {
+            // We only update the AI Index Paths here, keeping other settings as is
+            await apiRequest("/api/v1/storage/settings", {
+                method: "PUT",
+                body: JSON.stringify({
+                    ...settings,
+                    aiIndexPaths: paths
+                })
+            });
+            setSettings(prev => ({ ...prev, aiIndexPaths: paths }));
+            toast.success("Pfade aktualisiert");
+        } catch (err) {
+            toast.error("Fehler beim Speichern der Pfade");
+        } finally {
+            setSavingPaths(false);
         }
     };
 
@@ -167,82 +219,90 @@ export default function StorageTab() {
         );
     }
 
-    const usagePercent = storageData.disk_total > 0
-        ? (storageData.disk_used / storageData.disk_total) * 100
-        : 0;
-
     return (
         <div className="space-y-6">
-            {/* Disk Usage */}
+            {/* Physical Storage */}
             <GlassCard>
                 <SectionHeader
                     icon={HardDrive}
-                    title="Speichernutzung"
-                    description="Übersicht über den verfügbaren Speicherplatz"
+                    title="Physische Speicher"
+                    description="Status der verbundenen Laufwerke"
                 />
 
-                <div className="space-y-6">
-                    {/* Main Usage Bar */}
-                    <DiskUsageBar
-                        used={storageData.disk_used}
-                        total={storageData.disk_total}
-                        label="Hauptspeicher"
-                    />
-
-                    {/* Warning if > 90% */}
-                    {usagePercent > 90 && (
-                        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl">
-                            <AlertTriangle size={24} className="text-rose-400" />
-                            <div>
-                                <p className="text-rose-400 font-medium">Speicher kritisch!</p>
-                                <p className="text-slate-400 text-sm">Weniger als 10% freier Speicher verfügbar.</p>
-                            </div>
-                        </div>
+                <div className="space-y-4">
+                    {disks.map((disk, idx) => (
+                        <DiskUsageBar
+                            key={idx}
+                            mountPoint={disk.mount_point}
+                            fsType={disk.filesystem}
+                            used={disk.used}
+                            total={disk.total}
+                            label={disk.mount_point === '/' ? "System Root" : "Externer Speicher"}
+                        />
+                    ))}
+                    {disks.length === 0 && (
+                        <p className="text-slate-500 italic text-center py-4">Keine Laufwerke gefunden</p>
                     )}
-
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-                        <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
-                                <HardDrive size={14} />
-                                <span>Belegt</span>
-                            </div>
-                            <p className="text-white font-mono text-lg">{formatSize(storageData.disk_used)}</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
-                                <HardDrive size={14} />
-                                <span>Frei</span>
-                            </div>
-                            <p className="text-white font-mono text-lg">{formatSize(storageData.disk_free)}</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
-                                <File size={14} />
-                                <span>Dateien</span>
-                            </div>
-                            <p className="text-white font-mono text-lg">{storageData.file_count.toLocaleString()}</p>
-                        </div>
-
-                        <div className="p-4 bg-slate-800/30 rounded-xl border border-white/5">
-                            <div className="flex items-center gap-2 text-slate-400 text-sm mb-1">
-                                <Folder size={14} />
-                                <span>Ordner</span>
-                            </div>
-                            <p className="text-white font-mono text-lg">{storageData.folder_count.toLocaleString()}</p>
-                        </div>
-                    </div>
                 </div>
 
                 <button
-                    onClick={loadStorageData}
+                    onClick={loadData}
                     className="flex items-center gap-2 px-4 py-2 mt-4 text-slate-400 hover:text-white transition-colors"
                 >
                     <RefreshCw size={16} />
                     <span className="text-sm">Aktualisieren</span>
                 </button>
+            </GlassCard>
+
+            {/* AI Index Locations */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Database}
+                    title="AI Index Locations"
+                    description="Verzeichnisse, die automatisch vom AI Agent überwacht werden"
+                />
+
+                <div className="space-y-4">
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={newPath}
+                            onChange={(e) => setNewPath(e.target.value)}
+                            placeholder="/mnt/data/documents"
+                            className="flex-1 px-4 py-2 bg-slate-800/50 border border-white/10 rounded-xl text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:outline-none"
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddPath()}
+                        />
+                        <button
+                            onClick={handleAddPath}
+                            disabled={savingPaths || !newPath.trim()}
+                            className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-xl border border-blue-500/30 transition-all flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {savingPaths ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                            Hinzufügen
+                        </button>
+                    </div>
+
+                    <div className="space-y-2">
+                        {settings.aiIndexPaths.map((path) => (
+                            <div key={path} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl border border-white/5 group">
+                                <div className="flex items-center gap-3">
+                                    <Folder size={18} className="text-slate-400" />
+                                    <span className="text-slate-200 font-mono text-sm">{path}</span>
+                                </div>
+                                <button
+                                    onClick={() => handleRemovePath(path)}
+                                    disabled={savingPaths}
+                                    className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        ))}
+                        {settings.aiIndexPaths.length === 0 && (
+                            <p className="text-slate-500 italic text-sm p-2 text-center">Keine Pfade konfiguriert</p>
+                        )}
+                    </div>
+                </div>
             </GlassCard>
 
             {/* Trash Bin */}
@@ -256,16 +316,16 @@ export default function StorageTab() {
                 <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-xl">
                     <div>
                         <p className="text-white font-medium">
-                            {storageData.trash_count} Elemente
+                            {trashData.count} Elemente
                         </p>
                         <p className="text-slate-400 text-sm">
-                            Größe: {formatSize(storageData.trash_size)}
+                            Größe: {formatSize(trashData.size)}
                         </p>
                     </div>
 
                     <button
                         onClick={handleEmptyTrash}
-                        disabled={emptyingTrash || storageData.trash_count === 0}
+                        disabled={emptyingTrash || trashData.count === 0}
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-xl border border-rose-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {emptyingTrash ? (

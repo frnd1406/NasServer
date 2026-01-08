@@ -9,10 +9,12 @@ import (
 
 // StorageSettingsRequest for saving storage monitoring settings
 type StorageSettingsRequest struct {
-	WarningThreshold  int  `json:"warningThreshold"`
-	CriticalThreshold int  `json:"criticalThreshold"`
-	AutoCleanup       bool `json:"autoCleanup"`
-	CleanupAgeDays    int  `json:"cleanupAgeDays"`
+	WarningThreshold  int      `json:"warningThreshold"`
+	CriticalThreshold int      `json:"criticalThreshold"`
+	AutoCleanup       bool     `json:"autoCleanup"`
+	CleanupAgeDays    int      `json:"cleanupAgeDays"`
+	AIIndexPaths      []string `json:"aiIndexPaths,omitempty"` // From AIModels config
+
 }
 
 // StorageSettingsGetHandler returns the current storage monitoring settings
@@ -41,6 +43,7 @@ func StorageSettingsGetHandler(logger *logrus.Logger) gin.HandlerFunc {
 			CriticalThreshold: config.StorageMonitor.CriticalThreshold,
 			AutoCleanup:       config.StorageMonitor.AutoCleanup,
 			CleanupAgeDays:    config.StorageMonitor.CleanupAgeDays,
+			AIIndexPaths:      config.AIModels.IndexPaths,
 		})
 	}
 }
@@ -74,6 +77,14 @@ func StorageSettingsSaveHandler(logger *logrus.Logger) gin.HandlerFunc {
 			AutoCleanup:       req.AutoCleanup,
 			CleanupAgeDays:    req.CleanupAgeDays,
 		}
+
+		// Update AI Index Paths if provided (this is shared config, so we update AIModels part too)
+		// Note: Ideally we would separate this, but for now we piggyback on storage settings save
+		// to allow managing paths from the same UI.
+		// However, to strictly follow SRP, we should probably have a separate handler for AI config.
+		// BUT, the user requested "Storage Settings" to manage this.
+		// Let's at least preserve existing AI config while updating paths.
+		config.AIModels.IndexPaths = req.AIIndexPaths
 
 		if err := saveSetupConfig(config); err != nil {
 			logger.WithError(err).Error("Failed to save storage settings")

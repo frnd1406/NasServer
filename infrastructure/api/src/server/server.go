@@ -81,10 +81,12 @@ type Server struct {
 	benchmarkService        *operations.BenchmarkService
 	consistencyService      *operations.ConsistencyService
 	diagnosticsService      *operations.DiagnosticsService
+	hardwareService         *operations.HardwareService
 
 	// Handlers
 	blobStorageHandler *files.BlobStorageHandler
 	diagnosticsHandler *system.DiagnosticsHandler
+	hardwareHandler    *system.HardwareHandler
 
 	// Route Handlers
 	authHandler   *auth.Handler
@@ -280,6 +282,10 @@ func (s *Server) initServices() error {
 	s.diagnosticsService = operations.NewDiagnosticsService(s.storageService, s.encryptionService, s.dbx)
 	s.logger.Info("DiagnosticsService initialized")
 
+	// Hardware Service
+	s.hardwareService = operations.NewHardwareService(s.logger)
+	s.logger.Info("HardwareService initialized")
+
 	// Initial reconciliation
 	s.logger.Info("Running initial consistency reconciliation...")
 	if err := s.consistencyService.RunReconciliation(context.Background()); err != nil {
@@ -296,6 +302,9 @@ func (s *Server) initHandlers() {
 
 	s.diagnosticsHandler = system.NewDiagnosticsHandler(s.diagnosticsService)
 	s.logger.Info("DiagnosticsHandler initialized")
+
+	s.hardwareHandler = system.NewHardwareHandler(s.hardwareService, s.logger)
+	s.logger.Info("HardwareHandler initialized")
 
 	// Initialize new module handlers
 	s.authHandler = auth.NewHandler(
@@ -339,6 +348,7 @@ func (s *Server) initHandlers() {
 		s.settingsService,
 		s.encryptionService,
 		s.honeyfileService,
+		s.hardwareHandler,
 		s.diagnosticsHandler,
 		s.jwtService,
 		s.tokenService,

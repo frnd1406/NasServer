@@ -30,6 +30,7 @@ type Handler struct {
 	settingsService    *servicesConfig.SettingsService
 	encryptionService  *security.EncryptionService
 	honeyfileService   *content.HoneyfileService
+	hardwareHandler    *HardwareHandler
 	diagnosticsHandler *DiagnosticsHandler
 	jwtService         *security.JWTService
 	tokenService       *security.TokenService
@@ -50,6 +51,7 @@ func NewHandler(
 	settingsService *servicesConfig.SettingsService,
 	encryptionService *security.EncryptionService,
 	honeyfileService *content.HoneyfileService,
+	hardwareHandler *HardwareHandler,
 	diagnosticsHandler *DiagnosticsHandler,
 	jwtService *security.JWTService,
 	tokenService *security.TokenService,
@@ -68,6 +70,7 @@ func NewHandler(
 		settingsService:    settingsService,
 		encryptionService:  encryptionService,
 		honeyfileService:   honeyfileService,
+		hardwareHandler:    hardwareHandler,
 		diagnosticsHandler: diagnosticsHandler,
 		jwtService:         jwtService,
 		tokenService:       tokenService,
@@ -85,6 +88,10 @@ func (h *Handler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 func (h *Handler) RegisterV1Routes(rg *gin.RouterGroup) {
 	// Public (Token based)
 	rg.POST("/system/metrics", SystemMetricsHandler(h.systemMetricsRepo, h.cfg.MonitoringToken, h.logger))
+
+	// Public (Hardware Stats - Runtime)
+	rg.GET("/system/hardware/storage", h.hardwareHandler.GetStorageInfoHandler())
+	rg.GET("/system/hardware/network", h.hardwareHandler.GetNetworkInfoHandler())
 
 	// Public (Frontend Logging)
 	rg.POST("/system/logs/frontend", FrontendLogHandler(h.logger))

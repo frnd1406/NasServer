@@ -8,7 +8,9 @@ import {
     Gauge,
     Clock,
     Shield,
-    Link2
+    Link2,
+    Activity,
+    Network
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { apiRequest } from "../../lib/api";
@@ -46,11 +48,20 @@ const SESSION_TIMEOUTS = [
     { value: 1440, label: "24 Stunden" }
 ];
 
+const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
 export default function NetworkTab() {
     const toast = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [metrics, setMetrics] = useState([]);
 
     const [settings, setSettings] = useState({
         rate_limit_per_min: 100,
@@ -61,7 +72,7 @@ export default function NetworkTab() {
     const [originalSettings, setOriginalSettings] = useState(null);
 
     useEffect(() => {
-        loadSettings();
+        loadData();
     }, []);
 
     useEffect(() => {
@@ -74,23 +85,28 @@ export default function NetworkTab() {
         }
     }, [settings, originalSettings]);
 
-    const loadSettings = async () => {
+    const loadData = async () => {
         setLoading(true);
         try {
-            const data = await apiRequest("/api/v1/network/settings", { method: "GET" });
+            const [settingsData, metricsData] = await Promise.all([
+                apiRequest("/api/v1/network/settings", { method: "GET" }),
+                apiRequest("/api/v1/system/hardware/network", { method: "GET" }).catch(() => [])
+            ]);
 
             const loadedSettings = {
-                rate_limit_per_min: data?.rate_limit_per_min || 100,
-                session_timeout_mins: data?.session_timeout_mins || 60,
-                cors_origins: Array.isArray(data?.cors_origins)
-                    ? data.cors_origins.join("\n")
-                    : (data?.cors_origins || "")
+                rate_limit_per_min: settingsData?.rate_limit_per_min || 100,
+                session_timeout_mins: settingsData?.session_timeout_mins || 60,
+                cors_origins: Array.isArray(settingsData?.cors_origins)
+                    ? settingsData.cors_origins.join("\n")
+                    : (settingsData?.cors_origins || "")
             };
 
             setSettings(loadedSettings);
             setOriginalSettings(loadedSettings);
+            setMetrics(metricsData || []);
         } catch (err) {
-            toast.error("Netzwerkeinstellungen konnten nicht geladen werden");
+            toast.error("Daten konnten nicht geladen werden");
+            console.error(err);
         } finally {
             setLoading(false);
         }
@@ -136,6 +152,58 @@ export default function NetworkTab() {
 
     return (
         <div className="space-y-6">
+            {/* Live Metrics */}
+            <GlassCard>
+                <SectionHeader
+                    icon={Activity}
+                    title="Netzwerk Status"
+                    description="Aktuelle Schnittstellen und Traffic"
+                />
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="text-slate-400 border-b border-white/10 text-xs uppercase tracking-wider">
+                                <th className="p-3">Interface</th>
+                                <th className="p-3">IP Adresse</th>
+                                <th className="p-3">MAC</th>
+                                <th className="p-3 text-right">Download</th>
+                                <th className="p-3 text-right">Upload</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {metrics.map((iface) => (
+                                <tr key={iface.name} className="hover:bg-white/5 transition-colors">
+                                    <td className="p-3 flex items-center gap-2 font-medium text-cyan-400">
+                                        <Network size={16} />
+                                        {iface.name}
+                                    </td>
+                                    <td className="p-3 text-slate-300 text-sm font-mono">
+                                        {iface.ips?.join(", ") || "-"}
+                                    </td>
+                                    <td className="p-3 text-slate-400 text-xs font-mono">
+                                        {iface.mac}
+                                    </td>
+                                    <td className="p-3 text-right text-slate-300 font-mono text-sm">
+                                        {formatBytes(iface.bytes_recv)}
+                                    </td>
+                                    <td className="p-3 text-right text-slate-300 font-mono text-sm">
+                                        {formatBytes(iface.bytes_sent)}
+                                    </td>
+                                </tr>
+                            ))}
+                            {metrics.length === 0 && (
+                                <tr>
+                                    <td colSpan="5" className="p-4 text-center text-slate-500 text-sm italic">
+                                        Keine Netzwerkschnittstellen gefunden
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </GlassCard>
+
             {/* Restart Warning Banner (shown when changes exist) */}
             {hasChanges && (
                 <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 animate-pulse">
@@ -257,7 +325,7 @@ export default function NetworkTab() {
                 </button>
 
                 <button
-                    onClick={loadSettings}
+                    onClick={loadData}
                     className="flex items-center gap-2 px-4 py-3 text-slate-400 hover:text-white transition-colors"
                 >
                     <RefreshCw size={16} />
