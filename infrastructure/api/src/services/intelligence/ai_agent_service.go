@@ -228,20 +228,22 @@ func (s *AIAgentService) NotifyUploadSync(ctx context.Context, filePath, fileID,
 
 // NotifyDelete sends a deletion notification to the AI knowledge agent
 func (s *AIAgentService) NotifyDelete(ctx context.Context, filePath, fileID string) error {
-	payload := map[string]string{
-		"file_path": filePath,
-		"file_id":   fileID,
+	// Use new RESTful DELETE endpoint
+	// URL: /index/{fileID}
+	if fileID == "" {
+		// Fallback to filePath if ID is missing (though rarely happens)
+		fileID = filePath
 	}
 
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
-	}
+	// Double URL encode to ensure slash safety in path parameters if needed,
+	// but usually standard encoding is fine for file names.
+	// If fileID contains slashes (e.g. dir/file.txt), we need to be careful.
+	// The Python side uses <path:document_id> which captures slashes.
 
-	url := s.config.BaseURL + "/delete"
+	url := fmt.Sprintf("%s/index/%s", s.config.BaseURL, fileID)
 
 	resp, err := s.httpClient.DoWithRetry(ctx, "NotifyDelete", func() (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payloadBytes))
+		req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -254,15 +256,10 @@ func (s *AIAgentService) NotifyDelete(ctx context.Context, filePath, fileID stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		s.logger.WithFields(logrus.Fields{
-			"file_path": filePath,
-			"file_id":   fileID,
-		}).Info("AI agent deletion completed successfully")
 		return nil
 	}
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return fmt.Errorf("%w: status %d, body: %s", ErrAIBadResponse, resp.StatusCode, string(body))
+	return fmt.Errorf("%w: status %d", ErrAIBadResponse, resp.StatusCode)
 }
 
 // =============================================================================

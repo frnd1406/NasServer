@@ -48,12 +48,9 @@ def health():
 def status():
     svc = get_service()
     
-    # Get models (simplified check)
-    ollama_models = []
-    try:
-        if svc.check_ollama_health():
-            ollama_models = [svc.embedding_model, svc.llm_model]
-    except Exception: pass
+    # Use cached model_loaded state (updated by background thread)
+    # Don't call check_ollama_health() here as it blocks the request
+    ollama_models = [svc.embedding_model, svc.llm_model] if svc.model_loaded else []
 
     return jsonify({
         "ollama": {"connected": svc.model_loaded, "models": ollama_models},
@@ -61,6 +58,24 @@ def status():
         "index": {"indexed_files": svc.db.get_index_stats()},
         "settings": {"auto_index": svc.auto_index_enabled}
     })
+
+@api_bp.route("/reindex", methods=["POST"])
+def reindex():
+    """Trigger full re-indexing of all files."""
+    svc = get_service()
+    if not svc.model_loaded:
+        return jsonify({"error": "Ollama not loaded", "status": "failed"}), 503
+    
+    try:
+        indexed_count = svc.scan_and_index()
+        return jsonify({
+            "status": "success",
+            "message": f"Re-indexed {indexed_count} files",
+            "indexed_count": indexed_count
+        })
+    except Exception as e:
+        logger.error("Reindex failed: %s", e)
+        return jsonify({"error": str(e), "status": "failed"}), 500
 
 @api_bp.route("/process", methods=["POST"])
 def process_file():
@@ -136,6 +151,32 @@ def delete_embeddings():
 
     except Exception as e:
         logger.error("Delete error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/index/<path:document_id>", methods=["DELETE"])
+def delete_index_document(document_id):
+    """
+    Delete a document from the vector index by ID.
+    Method: DELETE
+    Path: /index/{document_id}
+    """
+    svc = get_service()
+    try:
+        # Check if we need to decode or handle the ID? 
+        # Usually Flask handles URL decoding.
+        
+        # We try to delete by file_id first
+        deleted = svc.db.delete_embeddings(file_id=document_id)
+        
+        # If not found, maybe it was passed as a path? 
+        if deleted == 0:
+             deleted = svc.db.delete_embeddings(file_path=document_id)
+
+        # Idempotent response: 200 OK even if not found (or 404 if strict, but mission said 200 is OK for idempotent)
+        return jsonify({"status": "success", "deleted_count": deleted, "document_id": document_id}), 200
+
+    except Exception as e:
+        logger.error("Delete index error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 # Legacy Endpoints for compatibility

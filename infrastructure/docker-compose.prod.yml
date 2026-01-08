@@ -227,6 +227,7 @@ services:
       LOG_LEVEL: INFO
     secrets:
       - postgres_password
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,7 +242,7 @@ services:
       - nas-network
       - agent-network
     volumes:
-      - nas_data:/mnt/data # Shared volume with API
+      - /mnt/data:/mnt/data:ro # Host data volume
     deploy:
       resources:
         limits:

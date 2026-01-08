@@ -160,7 +160,7 @@ Analysiere die Dokumente und antworte im vorgegebenen Format:"""
     def check_ollama_health(self):
         """Check if Ollama is available and models are loaded."""
         try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=300)
+            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
             if response.status_code == 200:
                 models = [m["name"] for m in response.json().get("models", [])]
                 embed_ok = any(self.embedding_model in m for m in models)

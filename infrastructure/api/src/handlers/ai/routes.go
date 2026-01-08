@@ -8,10 +8,10 @@ import (
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
 	"github.com/nas-ai/api/src/handlers/settings"
+	auth_repo "github.com/nas-ai/api/src/repository/auth"
 	"github.com/nas-ai/api/src/services/common"
 	"github.com/nas-ai/api/src/services/intelligence"
 	"github.com/nas-ai/api/src/services/operations"
-	auth_repo "github.com/nas-ai/api/src/repository/auth"
 	"github.com/sirupsen/logrus"
 )
 
@@ -55,10 +55,11 @@ func (h *Handler) RegisterV1Routes(rg *gin.RouterGroup) {
 	rg.GET("/ask", AskHandler(h.db, h.cfg.AIServiceURL, h.cfg.OllamaURL, h.cfg.LLMModel, nil, h.logger))
 
 	// AI Settings
-	rg.GET("/ai/status", settings.AIStatusHandler(h.cfg.AIServiceURL, h.aiHTTPClient, h.logger))
+	secureClient := common.NewSecureHTTPClient(h.cfg.InternalAPISecret, 10*time.Second)
+	rg.GET("/ai/status", settings.AIStatusHandler(h.cfg.AIServiceURL, secureClient, h.logger))
 	rg.GET("/ai/settings", settings.AISettingsGetHandler(h.logger))
 	rg.POST("/ai/settings", settings.AISettingsSaveHandler(h.logger))
-	rg.POST("/ai/reindex", settings.AIReindexHandler(h.cfg.AIServiceURL, h.aiHTTPClient, h.logger))
+	rg.POST("/ai/reindex", settings.AIReindexHandler(h.cfg.AIServiceURL, secureClient, h.logger))
 	rg.POST("/ai/warmup", settings.AIWarmupHandler(h.logger))
 }
 
