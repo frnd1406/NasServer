@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nas-ai/api/src/config"
 	_ "github.com/lib/pq"
+	"github.com/nas-ai/api/src/config"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,10 +33,22 @@ func NewPostgresConnection(cfg *config.Config, logger *logrus.Logger) (*DB, erro
 	}
 
 	// Configure connection pool
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-	db.SetConnMaxIdleTime(10 * time.Minute)
+	db.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
+
+	if d, err := time.ParseDuration(cfg.DBConnMaxLifetime); err == nil {
+		db.SetConnMaxLifetime(d)
+	} else {
+		logger.Warnf("Invalid DBConnMaxLifetime '%s', using default 5m", cfg.DBConnMaxLifetime)
+		db.SetConnMaxLifetime(5 * time.Minute)
+	}
+
+	if d, err := time.ParseDuration(cfg.DBConnMaxIdleTime); err == nil {
+		db.SetConnMaxIdleTime(d)
+	} else {
+		logger.Warnf("Invalid DBConnMaxIdleTime '%s', using default 10m", cfg.DBConnMaxIdleTime)
+		db.SetConnMaxIdleTime(10 * time.Minute)
+	}
 
 	// CRITICAL: Fail-fast - Verify connection works
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

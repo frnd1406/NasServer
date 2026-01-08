@@ -178,6 +178,15 @@ func (s *AIAgentService) NotifyUploadSync(ctx context.Context, filePath, fileID,
 		return nil
 	}
 
+	// SECURITY: Defensive limit on content size before JSON marshaling
+	if len(content) > 5*1024*1024 {
+		s.logger.WithFields(logrus.Fields{
+			"file_path":     filePath,
+			"original_size": len(content),
+		}).Debug("Truncating content for AI agent to 5MB")
+		content = content[:5*1024*1024]
+	}
+
 	payload := AIAgentPayload{
 		FilePath: filePath,
 		FileID:   fileID,

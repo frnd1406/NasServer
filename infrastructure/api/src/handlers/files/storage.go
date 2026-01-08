@@ -518,9 +518,19 @@ func StorageDownloadZipHandler(storage content.StorageService, logger *logrus.Lo
 			return
 		}
 
-		// Create a buffer to write the ZIP to
-		buf := new(bytes.Buffer)
-		zipWriter := zip.NewWriter(buf)
+		// Calculate filename early for headers
+		folderName := filepath.Base(fullPath)
+		if folderName == "" || folderName == "." {
+			folderName = "download"
+		}
+
+		// STREAMING: Write directly to response body to avoid OOM on large directories
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", folderName))
+		c.Header("Content-Type", "application/zip")
+		c.Status(http.StatusOK)
+
+		zipWriter := zip.NewWriter(c.Writer)
+		defer zipWriter.Close()
 
 		// Walk the directory and add files to ZIP
 		err = filepath.Walk(fullPath, func(filePath string, fileInfo os.FileInfo, err error) error {
@@ -577,25 +587,14 @@ func StorageDownloadZipHandler(storage content.StorageService, logger *logrus.Lo
 		})
 
 		if err != nil {
+			// Cannot write JSON error response if headers are already sent.
 			logger.WithFields(logrus.Fields{
 				"request_id": requestID,
 				"path":       path,
 				"error":      err.Error(),
-			}).Error("storage: failed to create ZIP")
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create ZIP"})
+			}).Error("storage: failed to stream ZIP")
 			return
 		}
-
-		zipWriter.Close()
-
-		// Get folder name for the ZIP filename
-		folderName := filepath.Base(fullPath)
-		if folderName == "" || folderName == "." {
-			folderName = "download"
-		}
-
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.zip\"", folderName))
-		c.Data(http.StatusOK, "application/zip", buf.Bytes())
 	}
 }
 
@@ -620,9 +619,13 @@ func StorageBatchDownloadHandler(storage content.StorageService, logger *logrus.
 			return
 		}
 
-		// Create a buffer for ZIP
-		buf := new(bytes.Buffer)
-		zipWriter := zip.NewWriter(buf)
+		// STREAMING: Write directly to response body
+		c.Header("Content-Disposition", "attachment; filename=\"download.zip\"")
+		c.Header("Content-Type", "application/zip")
+		c.Status(http.StatusOK)
+
+		zipWriter := zip.NewWriter(c.Writer)
+		defer zipWriter.Close()
 
 		for _, path := range req.Paths {
 			fullPath, err := storage.GetFullPath(path)
@@ -726,11 +729,6 @@ func StorageBatchDownloadHandler(storage content.StorageService, logger *logrus.
 				}
 			}
 		}
-
-		zipWriter.Close()
-
-		c.Header("Content-Disposition", "attachment; filename=\"download.zip\"")
-		c.Data(http.StatusOK, "application/zip", buf.Bytes())
 	}
 }
 

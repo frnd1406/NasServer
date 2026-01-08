@@ -77,12 +77,16 @@ func LoadConfigWithViper() (*Config, error) {
 		MonitoringToken: monitoringToken,
 
 		// Database
-		DatabaseURL:  v.GetString("database_url"),
-		DatabaseHost: v.GetString("db_host"),
-		DatabasePort: v.GetString("db_port"),
-		DatabaseUser: v.GetString("db_user"),
-		DatabasePass: dbPassword,
-		DatabaseName: v.GetString("db_name"),
+		DatabaseURL:       v.GetString("database_url"),
+		DatabaseHost:      v.GetString("db_host"),
+		DatabasePort:      v.GetString("db_port"),
+		DatabaseUser:      v.GetString("db_user"),
+		DatabasePass:      dbPassword,
+		DatabaseName:      v.GetString("db_name"),
+		DBMaxOpenConns:    v.GetInt("db_max_open_conns"),
+		DBMaxIdleConns:    v.GetInt("db_max_idle_conns"),
+		DBConnMaxLifetime: v.GetString("db_conn_max_lifetime"),
+		DBConnMaxIdleTime: v.GetString("db_conn_max_idle_time"),
 
 		// Redis
 		RedisURL:  v.GetString("redis_url"),
@@ -162,6 +166,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_user", "nas_user")
 	v.SetDefault("db_password", "nas_dev_password")
 	v.SetDefault("db_name", "nas_db")
+	v.SetDefault("db_max_open_conns", 25)
+	v.SetDefault("db_max_idle_conns", 5)
+	v.SetDefault("db_conn_max_lifetime", "5m")
+	v.SetDefault("db_conn_max_idle_time", "10m")
 
 	// Redis defaults
 	v.SetDefault("redis_host", "localhost")
@@ -215,6 +223,10 @@ func bindEnvVars(v *viper.Viper) {
 	_ = v.BindEnv("db_password", "DB_PASSWORD")
 	_ = v.BindEnv("db_password_file", "POSTGRES_PASSWORD_FILE")
 	_ = v.BindEnv("db_name", "DB_NAME")
+	_ = v.BindEnv("db_max_open_conns", "DB_MAX_OPEN_CONNS")
+	_ = v.BindEnv("db_max_idle_conns", "DB_MAX_IDLE_CONNS")
+	_ = v.BindEnv("db_conn_max_lifetime", "DB_CONN_MAX_LIFETIME")
+	_ = v.BindEnv("db_conn_max_idle_time", "DB_CONN_MAX_IDLE_TIME")
 
 	// Redis
 	_ = v.BindEnv("redis_url", "REDIS_URL")

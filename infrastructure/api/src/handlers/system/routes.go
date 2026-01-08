@@ -86,6 +86,9 @@ func (h *Handler) RegisterV1Routes(rg *gin.RouterGroup) {
 	// Public (Token based)
 	rg.POST("/system/metrics", SystemMetricsHandler(h.systemMetricsRepo, h.cfg.MonitoringToken, h.logger))
 
+	// Public (Frontend Logging)
+	rg.POST("/system/logs/frontend", FrontendLogHandler(h.logger))
+
 	// Protected Read-Only
 	rg.GET("/system/metrics", SystemMetricsListHandler(h.systemMetricsRepo, h.logger))
 	rg.GET("/system/metrics/live", SystemMetricsLiveHandler(h.logger))

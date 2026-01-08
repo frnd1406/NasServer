@@ -32,6 +32,12 @@ type Config struct {
 	DatabasePass string
 	DatabaseName string
 
+	// DB Pool Configuration
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime string
+	DBConnMaxIdleTime string
+
 	// Redis (Phase 2)
 	RedisURL  string
 	RedisHost string
