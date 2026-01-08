@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 
 // Hooks
-import { useFileStorage } from './useFileStorage';
-import { useFilePreview } from './useFilePreview';
+import { useFileData } from './files/useFileData';
+import { useFileOperations } from './files/useFileOperations';
+import { useFilePreview } from './files/useFilePreview';
 import { useDragAndDrop } from './useDragAndDrop';
-import { useFileSelection } from './useFileSelection';
+import { useFileSelection } from './files/useFileSelection';
 import { useVault } from '../context/VaultContext';
 
 // Utils
@@ -14,29 +15,41 @@ export function useFileManager(initialPath = '/') {
     // Vault context
     const { isUnlocked, password } = useVault();
 
-    // Storage Hook
+    // Data Hook (Fetching)
     const {
         files,
         trashedFiles,
         path,
         loading,
-        uploading,
-        error,
+        error: fetchError,
+        setError: setFetchError,
         loadFiles,
         loadTrash,
+        navigateTo,
+        refresh
+    } = useFileData(initialPath);
+
+    // Operations Hook (Mutations)
+    // Pass refresh/load functions to operations so they can update state after actions
+    const {
+        uploading,
+        opError,
+        setOpError,
         uploadFiles,
         downloadFile,
         deleteFile,
-        emptyTrash,
+        emptyTrash: rawEmptyTrash,
         restoreFile,
         renameFile,
         createFolder,
-        navigateTo,
         batchDownload,
         downloadFolderAsZip,
         batchDelete,
-        moveFile,
-    } = useFileStorage(initialPath, isUnlocked ? password : null);
+        moveFile
+    } = useFileOperations(loadFiles, loadTrash, isUnlocked ? password : null);
+
+    // Combine errors
+    const error = fetchError || opError;
 
     // Preview Hook
     const {
@@ -191,6 +204,11 @@ export function useFileManager(initialPath = '/') {
         restoreFile(item, path);
     }, [restoreFile, path]);
 
+    // Wrapper for emptyTrash to match expected signature if any (emptyTrash expects trashedFiles)
+    const handleEmptyTrash = useCallback(() => {
+        rawEmptyTrash(trashedFiles);
+    }, [rawEmptyTrash, trashedFiles]);
+
 
     const breadcrumbs = useMemo(() => getBreadcrumbs(path), [path]);
 
@@ -205,7 +223,7 @@ export function useFileManager(initialPath = '/') {
             isLoading: loading,
             isUploading: uploading,
             error,
-            refresh: () => loadFiles(path),
+            refresh: refresh,
             loadTrash,
         },
         selection: {
@@ -230,7 +248,7 @@ export function useFileManager(initialPath = '/') {
             move: handleMoveFile,
             navigate: handleNavigate,
             restore: handleRestore,
-            emptyTrash,
+            emptyTrash: handleEmptyTrash,
         },
         preview: {
             item: previewItem,

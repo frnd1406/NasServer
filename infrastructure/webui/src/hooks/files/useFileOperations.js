@@ -1,43 +1,11 @@
-// Custom hook for file storage operations
-
+// Hook for file operations (mutations)
 import { useState, useCallback } from 'react';
-import * as fileApi from '../api/files';
-import { joinPath } from '../utils/fileUtils';
+import * as fileApi from '../../api/files';
+import { joinPath } from '../../utils/fileUtils';
 
-export function useFileStorage(initialPath = '/', vaultPassword = null) {
-    const [files, setFiles] = useState([]);
-    const [trashedFiles, setTrashedFiles] = useState([]);
-    const [path, setPath] = useState(initialPath);
-    const [loading, setLoading] = useState(false);
+export function useFileOperations(loadFiles, loadTrash, vaultPassword = null) {
     const [uploading, setUploading] = useState(false);
-    const [error, setError] = useState('');
-
-    // Load files from a directory
-    const loadFiles = useCallback(async (target = path) => {
-        setLoading(true);
-        setError('');
-        try {
-            const fetchedFiles = await fileApi.fetchFiles(target);
-            setFiles(fetchedFiles);
-        } catch (err) {
-            setError(err.message || 'Unknown error');
-            if (err.message === 'Unauthorized') {
-                window.location.href = '/login';
-            }
-        } finally {
-            setLoading(false);
-        }
-    }, [path]);
-
-    // Load trashed files
-    const loadTrash = useCallback(async () => {
-        try {
-            const fetchedTrash = await fileApi.fetchTrash();
-            setTrashedFiles(fetchedTrash);
-        } catch (err) {
-            console.error('Failed to load trash:', err);
-        }
-    }, []);
+    const [opError, setOpError] = useState('');
 
     // Upload files with optional encryption mode override
     const uploadFiles = useCallback(async (filesToUpload, currentPath, options = {}) => {
@@ -46,7 +14,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
         const { encryptionMode = 'auto' } = options;
 
         setUploading(true);
-        setError('');
+        setOpError('');
 
         try {
             for (let i = 0; i < filesToUpload.length; i++) {
@@ -71,7 +39,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
         } catch (err) {
             console.error('Upload error:', err);
-            setError(err.message || 'Unknown error');
+            setOpError(err.message || 'Unknown error');
             if (err.message === 'Unauthorized') {
                 window.location.href = '/login';
             }
@@ -90,14 +58,14 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, []);
 
     // Delete file (Move to Trash)
     const deleteFile = useCallback(async (item, currentPath) => {
         if (item.name === '.trash') {
-            setError('Der Papierkorb kann nicht gelöscht werden');
+            setOpError('Der Papierkorb kann nicht gelöscht werden');
             return;
         }
 
@@ -108,7 +76,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
             await loadTrash();
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, [loadFiles, loadTrash]);
 
@@ -123,7 +91,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
     }, []);
 
     // Empty Trash
-    const emptyTrash = useCallback(async () => {
+    const emptyTrash = useCallback(async (trashedFiles) => {
         if (!window.confirm('Papierkorb endgültig leeren? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
 
         try {
@@ -133,9 +101,9 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
 
             await loadTrash();
         } catch (err) {
-            setError('Fehler beim Leeren des Papierkorbs');
+            setOpError('Fehler beim Leeren des Papierkorbs');
         }
-    }, [trashedFiles, deleteFromTrash, loadTrash]);
+    }, [deleteFromTrash, loadTrash]);
 
     // Restore file from trash
     const restoreFile = useCallback(async (item, currentPath) => {
@@ -144,7 +112,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadTrash();
             await loadFiles(currentPath);
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, [loadFiles, loadTrash]);
 
@@ -160,7 +128,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
             return true;
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
             return false;
         }
     }, [loadFiles]);
@@ -168,7 +136,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
     // Create folder
     const createFolder = useCallback(async (folderName, currentPath) => {
         if (!folderName || folderName.trim() === '') {
-            setError('Ordnername darf nicht leer sein');
+            setOpError('Ordnername darf nicht leer sein');
             return false;
         }
 
@@ -178,33 +146,15 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
             return true;
         } catch (err) {
-            setError(err.message || 'Fehler beim Erstellen des Ordners');
+            setOpError(err.message || 'Fehler beim Erstellen des Ordners');
             return false;
         }
     }, [loadFiles]);
 
-    // Navigate to directory
-    const navigateTo = useCallback((newPath) => {
-        setPath(newPath);
-        loadFiles(newPath);
-    }, [loadFiles]);
-
-    // Go up one directory
-    const goUp = useCallback(() => {
-        if (path === '/') return;
-        const parts = path.split('/').filter(Boolean);
-        parts.pop();
-        const parent = parts.length ? `/${parts.join('/')}` : '/';
-        navigateTo(parent);
-    }, [path, navigateTo]);
-
-    // Clear error
-    const clearError = useCallback(() => setError(''), []);
-
     // Batch download multiple files as ZIP
     const batchDownload = useCallback(async (selectedNames, currentPath) => {
         if (!selectedNames || selectedNames.length === 0) {
-            setError('Keine Dateien ausgewählt');
+            setOpError('Keine Dateien ausgewählt');
             return;
         }
 
@@ -218,7 +168,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, []);
 
@@ -234,7 +184,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, []);
 
@@ -246,10 +196,6 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
         if (!window.confirm(`${count} Dateien/Ordner wirklich löschen?`)) return;
 
         try {
-            // We can interact with fileApi directly here.
-            // Ideally fileApi.deleteFile takes (item, currentPath) OR just path.
-            // fileApi.deleteFile takes item object (for .name) and currentPath.
-            // Let's refactor fileApi.deleteFile later to be cleaner, but for now wrap it.
             for (const name of selectedNames) {
                 // Mock item object
                 await fileApi.deleteFile({ name }, currentPath);
@@ -257,7 +203,7 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
             await loadTrash();
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
         }
     }, [loadFiles, loadTrash]);
 
@@ -268,22 +214,15 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
             await loadFiles(currentPath);
             return true;
         } catch (err) {
-            setError(err.message);
+            setOpError(err.message);
             return false;
         }
     }, [loadFiles]);
 
     return {
-        // State
-        files,
-        trashedFiles,
-        path,
-        loading,
         uploading,
-        error,
-        // Actions
-        loadFiles,
-        loadTrash,
+        opError,
+        setOpError,
         uploadFiles,
         downloadFile,
         deleteFile,
@@ -292,13 +231,9 @@ export function useFileStorage(initialPath = '/', vaultPassword = null) {
         restoreFile,
         renameFile,
         createFolder,
-        navigateTo,
-        goUp,
-        clearError,
-        // Batch Actions
         batchDownload,
         downloadFolderAsZip,
         batchDelete,
-        moveFile,
+        moveFile
     };
 }

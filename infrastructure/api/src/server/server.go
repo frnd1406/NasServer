@@ -22,6 +22,8 @@ import (
 	"github.com/nas-ai/api/src/config"
 	"github.com/nas-ai/api/src/database"
 	"github.com/nas-ai/api/src/drivers/storage"
+	"github.com/nas-ai/api/src/handlers/ai"
+	"github.com/nas-ai/api/src/handlers/auth"
 	"github.com/nas-ai/api/src/handlers/files"
 	"github.com/nas-ai/api/src/handlers/system"
 	"github.com/nas-ai/api/src/middleware/core"
@@ -83,6 +85,12 @@ type Server struct {
 	// Handlers
 	blobStorageHandler *files.BlobStorageHandler
 	diagnosticsHandler *system.DiagnosticsHandler
+
+	// Route Handlers
+	authHandler   *auth.Handler
+	filesHandler  *files.Handler
+	systemHandler *system.Handler
+	aiHandler     *ai.Handler
 }
 
 // NewServer creates and initializes all server dependencies
@@ -288,6 +296,64 @@ func (s *Server) initHandlers() {
 
 	s.diagnosticsHandler = system.NewDiagnosticsHandler(s.diagnosticsService)
 	s.logger.Info("DiagnosticsHandler initialized")
+
+	// Initialize new module handlers
+	s.authHandler = auth.NewHandler(
+		s.cfg,
+		s.userRepo,
+		s.jwtService,
+		s.passwordService,
+		s.tokenService,
+		s.emailService,
+		s.redis,
+		s.logger,
+	)
+
+	s.filesHandler = files.NewHandler(
+		s.storageService,
+		s.encryptionService,
+		s.encryptionPolicyService,
+		s.honeyfileService,
+		s.aiAgentService,
+		s.archiveService,
+		s.contentDeliveryService,
+		s.encryptedStorageService,
+		s.secureAIFeeder,
+		s.blobStorageHandler,
+		s.jwtService,
+		s.tokenService,
+		s.redis,
+		s.logger,
+	)
+
+	s.systemHandler = system.NewHandler(
+		s.db,
+		s.redis,
+		s.cfg,
+		s.userRepo,
+		s.systemMetricsRepo,
+		s.systemAlertsRepo,
+		s.monitoringRepo,
+		s.jobService,
+		s.benchmarkService,
+		s.settingsService,
+		s.encryptionService,
+		s.honeyfileService,
+		s.diagnosticsHandler,
+		s.jwtService,
+		s.tokenService,
+		s.logger,
+	)
+
+	s.aiHandler = ai.NewHandler(
+		s.db,
+		s.cfg,
+		s.aiHTTPClient,
+		s.jobService,
+		s.secureAIFeeder,
+		s.userRepo,
+		s.logger,
+	)
 }
 
 // initRouter creates and configures the Gin router
