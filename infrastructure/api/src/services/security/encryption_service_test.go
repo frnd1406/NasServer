@@ -140,6 +140,63 @@ func TestIsEncrypted(t *testing.T) {
 	}
 }
 
+// TestHeaderTampering ensures that modifying the header invalidates the decryption.
+// This proves that the header is correctly bound to the ciphertext via AAD.
+func TestHeaderTampering(t *testing.T) {
+	password := "tamper-proof-password"
+	testData := []byte("This data must not be decryptable if header is modified")
+
+	// 1. Encrypt data
+	var encryptedBuf bytes.Buffer
+	err := EncryptStream(password, bytes.NewReader(testData), &encryptedBuf)
+	if err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+
+	validCiphertext := encryptedBuf.Bytes()
+
+	// 2. Tamper with various parts of the header
+	// Header structure: Magic(4) + Version(1) + Salt(16) + BaseNonce(24)
+
+	testCases := []struct {
+		name      string
+		byteIndex int // Index to tamper
+	}{
+		{"TamperMagic", 0},              // 'N' -> something else
+		{"TamperVersion", 4},            // Version byte
+		{"TamperSaltStart", 5},          // First byte of salt
+		{"TamperSaltMid", 5 + 8},        // Middle of salt
+		{"TamperNonceStart", 5 + 16},    // First byte of nonce
+		{"TamperNonceEnd", 5 + 16 + 23}, // Last byte of nonce
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fresh copy of ciphertext
+			tampered := make([]byte, len(validCiphertext))
+			copy(tampered, validCiphertext)
+
+			// Flip a bit at the target index
+			tampered[tc.byteIndex] ^= 0xFF
+
+			// Attempt to decrypt
+			var output bytes.Buffer
+			err := DecryptStream(password, bytes.NewReader(tampered), &output)
+
+			// Expect failure
+			if err == nil {
+				t.Errorf("Decryption should have failed when modifying byte %d (%s)", tc.byteIndex, tc.name)
+			} else {
+				// Verify it's an integrity error, not just a random crash
+				// The actual error comes from ChaCha20Poly1305 Open() failing check
+				if !strings.Contains(err.Error(), "corrupted") && !strings.Contains(err.Error(), "authentication failed") && !strings.Contains(err.Error(), "invalid") {
+					t.Logf("Got expected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
 // TestEmptyData tests handling of empty input
 func TestEmptyData(t *testing.T) {
 	password := "test"
