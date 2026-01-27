@@ -10,7 +10,10 @@ import {
     Plus,
     X,
     Database,
-    Save
+    Save,
+    ChevronRight,
+    Info,
+    Server
 } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { apiRequest } from "../../lib/api";
@@ -38,13 +41,27 @@ const SectionHeader = ({ icon: Icon, title, description }) => (
     </div>
 );
 
-// Progress Bar for Disk Usage
-const DiskUsageBar = ({ used, total, label, mountPoint, fsType }) => {
+// Helper function for formatting size
+const formatSize = (bytes) => {
+    if (bytes >= 1024 * 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2) + " TB";
+    } else if (bytes >= 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+    } else if (bytes >= 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+    return bytes + " B";
+};
+
+// Progress Bar for Disk Usage (now clickable)
+const DiskUsageBar = ({ disk, onClick, isSelected }) => {
+    const { used, total, mount_point, filesystem, free, device, drive_type } = disk;
     const percentage = total > 0 ? (used / total) * 100 : 0;
 
     // Color based on usage
     let barColor = "bg-emerald-500";
     let bgColor = "bg-emerald-500/20";
+    let borderColor = "border-white/5";
     if (percentage > 90) {
         barColor = "bg-rose-500";
         bgColor = "bg-rose-500/20";
@@ -52,35 +69,45 @@ const DiskUsageBar = ({ used, total, label, mountPoint, fsType }) => {
         barColor = "bg-amber-500";
         bgColor = "bg-amber-500/20";
     }
+    if (isSelected) {
+        borderColor = "border-blue-500/50";
+    }
 
-    const formatSize = (bytes) => {
-        if (bytes >= 1024 * 1024 * 1024 * 1024) {
-            return (bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2) + " TB";
-        } else if (bytes >= 1024 * 1024 * 1024) {
-            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
-        } else if (bytes >= 1024 * 1024) {
-            return (bytes / (1024 * 1024)).toFixed(2) + " MB";
-        }
-        return bytes + " B";
-    };
+    // Clean up mount point display (remove /host prefix for cleaner display)
+    const displayMount = mount_point?.replace('/host', '') || '/';
 
     return (
-        <div className="space-y-3 p-4 bg-slate-800/30 rounded-xl border border-white/5">
+        <div
+            onClick={onClick}
+            className={`space-y-3 p-4 bg-slate-800/30 rounded-xl border ${borderColor} cursor-pointer hover:bg-slate-800/50 hover:border-blue-500/30 transition-all group`}
+        >
             <div className="flex justify-between items-start">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-white font-medium">{mountPoint}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
-                            {fsType}
-                        </span>
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-500/20' : 'bg-slate-700/50'} transition-colors`}>
+                        <HardDrive size={18} className={isSelected ? 'text-blue-400' : 'text-slate-400'} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-white font-medium">{device || displayMount}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${drive_type === 'NVMe SSD' ? 'bg-blue-500/20 text-blue-400' :
+                                drive_type === 'Removable' ? 'bg-amber-500/20 text-amber-400' :
+                                    'bg-slate-700 text-slate-300'
+                                }`}>
+                                {drive_type || filesystem}
+                            </span>
+                        </div>
+                        <span className="text-xs text-slate-500">{displayMount || mount_point}</span>
                     </div>
                 </div>
-                <span className="text-white font-mono text-sm">
-                    {formatSize(used)} / {formatSize(total)}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="text-white font-mono text-sm">
+                        {formatSize(used)} / {formatSize(total)}
+                    </span>
+                    <ChevronRight size={16} className="text-slate-500 group-hover:text-blue-400 transition-colors" />
+                </div>
             </div>
 
-            <div className={`h-4 rounded-full ${bgColor} overflow-hidden`}>
+            <div className={`h-3 rounded-full ${bgColor} overflow-hidden`}>
                 <div
                     className={`h-full ${barColor} transition-all duration-500 rounded-full`}
                     style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -88,12 +115,139 @@ const DiskUsageBar = ({ used, total, label, mountPoint, fsType }) => {
             </div>
 
             <div className="flex justify-between text-xs text-slate-500">
-                <span>{label || "Physical Disk"}</span>
+                <span>{formatSize(free)} frei</span>
                 <span>{percentage.toFixed(1)}% belegt</span>
             </div>
         </div>
     );
 };
+
+// Disk Detail Modal
+const DiskDetailModal = ({ disk, onClose }) => {
+    if (!disk) return null;
+
+    const percentage = disk.total > 0 ? (disk.used / disk.total) * 100 : 0;
+
+    let statusColor = "text-emerald-400";
+    let statusBg = "bg-emerald-500/20";
+    let statusText = "Gesund";
+    if (percentage > 90) {
+        statusColor = "text-rose-400";
+        statusBg = "bg-rose-500/20";
+        statusText = "Kritisch";
+    } else if (percentage > 70) {
+        statusColor = "text-amber-400";
+        statusBg = "bg-amber-500/20";
+        statusText = "Warnung";
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+            <div
+                className="bg-slate-900/95 border border-white/10 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-6">
+                    <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-xl ${disk.drive_type === 'NVMe SSD' ? 'bg-blue-500/20 border border-blue-500/30' :
+                                disk.drive_type === 'Removable' ? 'bg-amber-500/20 border border-amber-500/30' :
+                                    'bg-slate-700/50 border border-white/10'
+                            }`}>
+                            <HardDrive size={28} className={
+                                disk.drive_type === 'NVMe SSD' ? 'text-blue-400' :
+                                    disk.drive_type === 'Removable' ? 'text-amber-400' :
+                                        'text-slate-400'
+                            } />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">{disk.device || disk.mount_point}</h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${disk.drive_type === 'NVMe SSD' ? 'bg-blue-500/20 text-blue-400' :
+                                        disk.drive_type === 'Removable' ? 'bg-amber-500/20 text-amber-400' :
+                                            'bg-slate-700 text-slate-300'
+                                    }`}>
+                                    {disk.drive_type || 'Volume'}
+                                </span>
+                                <span className="text-slate-500 text-sm">{disk.filesystem}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Status Badge */}
+                <div className={`inline-flex items-center gap-2 px-3 py-1.5 ${statusBg} rounded-full mb-6`}>
+                    <div className={`w-2 h-2 rounded-full ${statusColor.replace('text-', 'bg-')} animate-pulse`} />
+                    <span className={`text-sm font-medium ${statusColor}`}>{statusText}</span>
+                </div>
+
+                {/* Usage Bar */}
+                <div className="mb-6">
+                    <div className="flex justify-between text-sm mb-2">
+                        <span className="text-slate-400">Speichernutzung</span>
+                        <span className="text-white font-mono">{percentage.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-4 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                            className={`h-full ${percentage > 90 ? 'bg-rose-500' : percentage > 70 ? 'bg-amber-500' : 'bg-emerald-500'} transition-all rounded-full`}
+                            style={{ width: `${percentage}%` }}
+                        />
+                    </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 text-center">
+                        <Server size={20} className="text-blue-400 mx-auto mb-2" />
+                        <p className="text-white font-mono text-lg">{formatSize(disk.total)}</p>
+                        <p className="text-slate-500 text-xs">Gesamt</p>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 text-center">
+                        <HardDrive size={20} className="text-amber-400 mx-auto mb-2" />
+                        <p className="text-white font-mono text-lg">{formatSize(disk.used)}</p>
+                        <p className="text-slate-500 text-xs">Belegt</p>
+                    </div>
+                    <div className="p-4 bg-slate-800/50 rounded-xl border border-white/5 text-center">
+                        <Database size={20} className="text-emerald-400 mx-auto mb-2" />
+                        <p className="text-white font-mono text-lg">{formatSize(disk.free)}</p>
+                        <p className="text-slate-500 text-xs">Frei</p>
+                    </div>
+                </div>
+
+                {/* Details List */}
+                <div className="space-y-3">
+                    <div className="flex justify-between p-3 bg-slate-800/30 rounded-lg">
+                        <span className="text-slate-400">Mount-Punkt</span>
+                        <span className="text-white font-mono text-sm">{disk.mount_point}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-800/30 rounded-lg">
+                        <span className="text-slate-400">Dateisystem</span>
+                        <span className="text-white font-mono text-sm">{disk.filesystem}</span>
+                    </div>
+                    <div className="flex justify-between p-3 bg-slate-800/30 rounded-lg">
+                        <span className="text-slate-400">Auslastung</span>
+                        <span className={`font-mono text-sm ${statusColor}`}>{percentage.toFixed(2)}%</span>
+                    </div>
+                </div>
+
+                {/* Info Note */}
+                <div className="mt-6 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
+                    <Info size={18} className="text-blue-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-slate-400 text-sm">
+                        Um diesen Speicher für AI-Indexierung zu verwenden, füge den Pfad unter "AI Index Locations" hinzu.
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export default function StorageTab() {
     const toast = useToast();
@@ -103,6 +257,7 @@ export default function StorageTab() {
 
     // Data States
     const [disks, setDisks] = useState([]);
+    const [selectedDisk, setSelectedDisk] = useState(null);
     const [trashData, setTrashData] = useState({ size: 0, count: 0 });
     const [settings, setSettings] = useState({
         warningThreshold: 80,
@@ -229,21 +384,27 @@ export default function StorageTab() {
                     description="Status der verbundenen Laufwerke"
                 />
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {disks.map((disk, idx) => (
                         <DiskUsageBar
                             key={idx}
-                            mountPoint={disk.mount_point}
-                            fsType={disk.filesystem}
-                            used={disk.used}
-                            total={disk.total}
-                            label={disk.mount_point === '/' ? "System Root" : "Externer Speicher"}
+                            disk={disk}
+                            onClick={() => setSelectedDisk(disk)}
+                            isSelected={selectedDisk?.mount_point === disk.mount_point}
                         />
                     ))}
                     {disks.length === 0 && (
                         <p className="text-slate-500 italic text-center py-4">Keine Laufwerke gefunden</p>
                     )}
                 </div>
+
+                {/* Disk Detail Modal */}
+                {selectedDisk && (
+                    <DiskDetailModal
+                        disk={selectedDisk}
+                        onClose={() => setSelectedDisk(null)}
+                    />
+                )}
 
                 <button
                     onClick={loadData}

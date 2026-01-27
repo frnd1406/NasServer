@@ -125,3 +125,8 @@ scan_results/
 *.pdf
 *.docx
 
+# Local Settings & Configuration (prevent data leaks)
+**/setup.json
+**/local-settings.json
+**/user-config.json
+infrastructure/db/data/

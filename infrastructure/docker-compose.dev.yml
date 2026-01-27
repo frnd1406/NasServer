@@ -104,6 +104,8 @@ services:
     volumes:
       - nas_data:/mnt/data
       - nas_backups:/mnt/backups
+      # HOST FILESYSTEM: Read-only access for real drive detection
+      - /:/host:ro
       # SECURITY: Vault ist NICHT persistent (Zero-Knowledge)
       # Wenn Container neustartet → Vault weg → User muss neu einrichten
       # Das ist GEWOLLT für maximale Sicherheit!
